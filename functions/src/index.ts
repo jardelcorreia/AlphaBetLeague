@@ -12,6 +12,7 @@ const BASE_URL = 'https://api.football-data.org/v4';
 
 /**
  * Verifica se estamos no horário de silêncio (22h às 08h BRT).
+ * Isso evita que notificações Push acordem os jogadores.
  */
 function isQuietHours(): boolean {
   const now = new Date();
@@ -26,6 +27,8 @@ function isQuietHours(): boolean {
 
 /**
  * Lógica de Janela de Validade
+ * Determina quantos jogos de uma rodada são elegíveis para palpites e pontos,
+ * baseando-se em uma janela de 3 dias em torno da data principal da rodada.
  */
 function getValidMatchesCount(matches: any[]): number {
   if (!matches || matches.length === 0) return 0;
@@ -150,6 +153,7 @@ export const syncBrasileiraoData = onSchedule({
 
 /**
  * Recalcula e salva automaticamente o ranking sempre que a rodada é atualizada.
+ * Disparado por qualquer mudança no documento da rodada.
  */
 export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const after = event.data?.after.data();
@@ -208,14 +212,14 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       totalPointsInRound += pts;
     });
 
-    // DETERMINAR VENCEDORES
+    // 4. DETERMINAR VENCEDORES
     const maxPts = Math.max(...Object.values(pointsMap), 0);
     const winnerNames = users
       .filter(u => pointsMap[u.id] === maxPts && maxPts > 0)
       .map(u => u.username || u.id)
       .join(", ");
 
-    // 5. Atualizar o histórico global do campeonato
+    // 5. Atualizar o histórico global do campeonato (documento championship)
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
@@ -248,6 +252,9 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
   }
 });
 
+/**
+ * Notifica os usuários quando os palpites da rodada são revelados (isScoresHidden mudou de true para false).
+ */
 export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const before = event.data?.before.data();
   const after = event.data?.after.data();
@@ -278,6 +285,9 @@ export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event
   }
 });
 
+/**
+ * Envia notificação "NA MOSCA" se o usuário acertar o placar exato assim que o jogo termina.
+ */
 export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const after = event.data?.after.data();
   const before = event.data?.before.data();
@@ -317,6 +327,13 @@ export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (e
   }
 });
 
+/**
+ * Lógica de Notificações de Lembrete:
+ * 1. Roda a cada 30 minutos.
+ * 2. Verifica se faltam palpites para a rodada atual.
+ * 3. Notifica apenas nas 24h que antecedem o primeiro jogo.
+ * 4. Respeita o horário de silêncio (22h-08h).
+ */
 export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => {
   if (isQuietHours()) return;
   const roundsSnapshot = await admin.firestore()
@@ -332,25 +349,35 @@ export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => 
   const matches = roundData.matches || [];
   const targetCount = getValidMatchesCount(matches);
   if (targetCount === 0) return;
+  
+  // Encontra o horário do primeiro jogo válido
   const firstMatchTime = matches
     .filter((m: any) => m.status !== 'cancelled' && m.utcDate)
     .reduce((earliest: number, m: any) => {
       const d = new Date(m.utcDate).getTime();
       return (d > 0 && d < earliest) ? d : earliest;
     }, Infinity);
+    
   if (!Number.isFinite(firstMatchTime)) return;
+  
   const now = Date.now();
   const twentyFourHours = 24 * 60 * 60 * 1000;
+  
+  // Só notifica se estiver no dia do jogo (24h antes até o momento do jogo)
   if (now < (firstMatchTime - twentyFourHours) || now >= firstMatchTime) return;
+  
   const usersSnapshot = await admin.firestore().collection("users").get();
   for (const userDoc of usersSnapshot.docs) {
     const userData = userDoc.data();
     const userId = userDoc.id;
     if (!userData.fcmTokens || userData.fcmTokens.length === 0) continue;
+    
+    // Verifica quantos palpites este usuário já fez para esta rodada específica
     const userBetsSnapshot = await admin.firestore()
       .collection(`rounds/${roundId}/bets`)
       .where("userId", "==", userId)
       .get();
+      
     if (userBetsSnapshot.size < targetCount) {
       const remaining = targetCount - userBetsSnapshot.size;
       const message = {
