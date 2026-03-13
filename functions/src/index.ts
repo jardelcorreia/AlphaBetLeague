@@ -331,7 +331,7 @@ export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (e
  * Lógica de Notificações de Lembrete:
  * 1. Roda a cada 30 minutos.
  * 2. Verifica se faltam palpites para a rodada atual.
- * 3. Notifica apenas nas 24h que antecedem o primeiro jogo.
+ * 3. Notifica apenas nas 12h que antecedem o primeiro jogo.
  * 4. Respeita o horário de silêncio (22h-08h).
  */
 export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => {
@@ -361,10 +361,10 @@ export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => 
   if (!Number.isFinite(firstMatchTime)) return;
   
   const now = Date.now();
-  const twentyFourHours = 24 * 60 * 60 * 1000;
+  const twelveHours = 12 * 60 * 60 * 1000;
   
-  // Só notifica se estiver no dia do jogo (24h antes até o momento do jogo)
-  if (now < (firstMatchTime - twentyFourHours) || now >= firstMatchTime) return;
+  // Só notifica se estiver no dia do jogo (12h antes até o momento do jogo)
+  if (now < (firstMatchTime - twelveHours) || now >= firstMatchTime) return;
   
   const usersSnapshot = await admin.firestore().collection("users").get();
   for (const userDoc of usersSnapshot.docs) {
