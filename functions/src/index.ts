@@ -69,6 +69,7 @@ function getValidMatchesCount(matches: any[]): number {
 
 /**
  * Sincroniza dados da API oficial com o Firestore a cada 15 minutos.
+ * Agora também revela os placares automaticamente se algum jogo começar.
  */
 export const syncBrasileiraoData = onSchedule({
   schedule: "every 15 minutes",
@@ -117,6 +118,16 @@ export const syncBrasileiraoData = onSchedule({
     const roundDoc = await roundRef.get();
     const existingData = roundDoc.exists ? roundDoc.data() : null;
 
+    // Lógica de Revelação Automática:
+    // Se a rodada está oculta mas algum jogo começou (live ou finished), revelamos.
+    let isScoresHidden = existingData ? existingData.isScoresHidden : true;
+    const matchStarted = apiMatches.some((m: any) => m.status === 'live' || m.status === 'finished');
+    
+    if (isScoresHidden && matchStarted) {
+      isScoresHidden = false;
+      console.log(`syncBrasileiraoData: Rodada ${currentMatchday} detectada como iniciada. Revelando palpites automaticamente.`);
+    }
+
     let finalMatches = apiMatches;
     if (existingData && existingData.matches) {
       finalMatches = apiMatches.map((apiMatch: any) => {
@@ -139,7 +150,7 @@ export const syncBrasileiraoData = onSchedule({
       roundNumber: currentMatchday,
       name: `Rodada ${currentMatchday}`,
       matches: finalMatches,
-      isScoresHidden: existingData ? existingData.isScoresHidden : true,
+      isScoresHidden: isScoresHidden,
       dateUpdated: admin.firestore.FieldValue.serverTimestamp(),
       dateCreated: existingData ? existingData.dateCreated : admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
