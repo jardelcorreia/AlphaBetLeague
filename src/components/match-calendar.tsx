@@ -275,8 +275,8 @@ export function MatchCalendar({
                          </div>
                          {!isLocked && (
                            <div className="flex items-center gap-1 mt-1">
-                              <CheckCircle2 className="h-2 w-2 text-secondary opacity-50" />
-                              <span className="text-[6px] font-black uppercase text-muted-foreground/60 tracking-widest">Auto-Save Ativo</span>
+                              <CheckCircle2 className="h-2 w-2 text-secondary opacity-70" />
+                              <span className="text-[6px] font-black uppercase text-primary/70 dark:text-primary/90 tracking-widest">Auto-Save Ativo</span>
                            </div>
                          )}
                       </div>
@@ -303,7 +303,7 @@ export function MatchCalendar({
                       </span>
                    </div>
                    {isEffectivelyInvalid && (
-                     <div className="flex items-center gap-1 text-destructive font-black text-[9px] uppercase tracking-wider text-center px-4">
+                     <div className="flex items-center gap-1 text-red-600 dark:text-red-400 font-black text-[9px] uppercase tracking-wider text-center px-4">
                         <AlertTriangle className="h-3 w-3" /> 
                         {isCancelled ? 'Pontuação suspensa para este jogo' : 'Jogo indisponível para pontuação'}
                      </div>

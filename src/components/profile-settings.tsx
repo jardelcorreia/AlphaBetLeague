@@ -290,15 +290,17 @@ export function ProfileSettings() {
             <div className="flex justify-between items-end ml-1">
               <Label htmlFor="display-name" className="text-[10px] font-black uppercase text-muted-foreground">Nome de Exibição</Label>
               <span className={cn(
-                "text-[8px] font-bold uppercase tracking-tighter",
-                displayName.trim().length < 3 || displayName.trim().length > 12 ? "text-destructive" : "text-muted-foreground/40"
+                "text-[9px] font-black uppercase tracking-tighter transition-colors",
+                (displayName.trim().length < 3 || displayName.trim().length > 12) 
+                  ? "text-destructive" 
+                  : "text-primary/60 dark:text-primary/80"
               )}>
                 {displayName.trim().length}/12
               </span>
             </div>
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40" />
+                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40 z-10" />
                 <Input 
                   id="display-name"
                   value={displayName}

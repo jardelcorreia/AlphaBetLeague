@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -70,7 +71,7 @@
 }
 
 .glass-card {
-  @apply bg-white/80 dark:bg-card/80 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-xl;
+  @apply bg-white/80 dark:bg-card/70 backdrop-blur-md border border-white/20 dark:border-white/5 shadow-xl transition-colors duration-300;
 }
 
 .sports-gradient {
