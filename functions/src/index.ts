@@ -69,7 +69,7 @@ function getValidMatchesCount(matches: any[]): number {
 
 /**
  * Sincroniza dados da API oficial com o Firestore a cada 15 minutos.
- * Agora também revela os placares automaticamente se algum jogo começar.
+ * Agora também revela os placares automaticamente se o horário de início do primeiro jogo for atingido.
  */
 export const syncBrasileiraoData = onSchedule({
   schedule: "every 15 minutes",
@@ -118,14 +118,24 @@ export const syncBrasileiraoData = onSchedule({
     const roundDoc = await roundRef.get();
     const existingData = roundDoc.exists ? roundDoc.data() : null;
 
-    // Lógica de Revelação Automática:
-    // Se a rodada está oculta mas algum jogo começou (live ou finished), revelamos.
     let isScoresHidden = existingData ? existingData.isScoresHidden : true;
-    const matchStarted = apiMatches.some((m: any) => m.status === 'live' || m.status === 'finished');
+    let autoRevealProcessed = existingData ? existingData.autoRevealProcessed : false;
+
+    // Lógica de Revelação Automática Baseada em Horário:
+    // Se a rodada ainda está oculta e o horário do primeiro jogo (válido) já passou, revelamos.
+    const firstMatchTime = apiMatches
+      .filter((m: any) => m.status !== 'cancelled' && m.utcDate)
+      .reduce((earliest: number, m: any) => {
+        const d = new Date(m.utcDate).getTime();
+        return (d > 0 && d < earliest) ? d : earliest;
+      }, Infinity);
+
+    const now = Date.now();
     
-    if (isScoresHidden && matchStarted) {
+    if (isScoresHidden && !autoRevealProcessed && Number.isFinite(firstMatchTime) && now >= firstMatchTime) {
       isScoresHidden = false;
-      console.log(`syncBrasileiraoData: Rodada ${currentMatchday} detectada como iniciada. Revelando palpites automaticamente.`);
+      autoRevealProcessed = true; // Marca que o gatilho automático foi acionado
+      console.log(`syncBrasileiraoData: Rodada ${currentMatchday} atingiu o horário de início (${new Date(firstMatchTime).toISOString()}). Revelando palpites automaticamente.`);
     }
 
     let finalMatches = apiMatches;
@@ -151,6 +161,7 @@ export const syncBrasileiraoData = onSchedule({
       name: `Rodada ${currentMatchday}`,
       matches: finalMatches,
       isScoresHidden: isScoresHidden,
+      autoRevealProcessed: autoRevealProcessed,
       dateUpdated: admin.firestore.FieldValue.serverTimestamp(),
       dateCreated: existingData ? existingData.dateCreated : admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });

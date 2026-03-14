@@ -61,6 +61,10 @@
           "type": "boolean",
           "description": "Indica se os palpites dos outros jogadores estão ocultos."
         },
+        "autoRevealProcessed": {
+          "type": "boolean",
+          "description": "Indica se o servidor já realizou a revelação automática desta rodada."
+        },
         "matches": {
           "type": "array",
           "description": "Dados das partidas sobrescritos manualmente pelo administrador.",

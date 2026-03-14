@@ -189,7 +189,6 @@ export default function AdminPage() {
   const persistRoundChanges = (updatedMatches: Match[]) => {
     if (!currentRound || !roundId) return;
     
-    // IMPORTANTE: Enviar a lista COMPLETA de jogos para evitar que o ranking zere no servidor
     const fullMatchList = updatedMatches.map(m => ({
       id: m.id,
       homeTeam: m.homeTeam,
@@ -208,6 +207,7 @@ export default function AdminPage() {
       roundNumber: currentRound,
       name: roundName,
       isScoresHidden: placaresOcultos,
+      autoRevealProcessed: roundData?.autoRevealProcessed || false,
       matches: fullMatchList,
       dateUpdated: serverTimestamp(),
       dateCreated: roundData?.dateCreated || serverTimestamp(),
@@ -267,12 +267,24 @@ export default function AdminPage() {
     if (!roundId) return;
     const newState = !placaresOcultos;
     setPlacaresOcultos(newState);
+    
     const roundRef = doc(db, "rounds", roundId);
-    setDocumentNonBlocking(roundRef, {
+    const updateData: any = {
       isScoresHidden: newState,
       dateUpdated: serverTimestamp(),
-    }, { merge: true });
-    toast({ title: newState ? "Palpites Ocultos" : "Palpites Revelados", description: newState ? "Ninguém vê os palpites alheios." : "Todos agora veem tudo." });
+    };
+
+    // Se o admin está revelando manualmente, marcamos como processado para que o servidor não tente interferir
+    if (newState === false) {
+      updateData.autoRevealProcessed = true;
+    }
+
+    setDocumentNonBlocking(roundRef, updateData, { merge: true });
+    
+    toast({ 
+      title: newState ? "Palpites Ocultos" : "Palpites Revelados", 
+      description: newState ? "Ninguém vê os palpites alheios." : "Todos agora veem tudo." 
+    });
   };
 
   if (isUserLoading || !isAdmin) {
