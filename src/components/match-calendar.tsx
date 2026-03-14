@@ -7,7 +7,7 @@ import { TEAMS } from "@/lib/constants";
 import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
-import { CalendarDays, Clock, ChevronLeft, ChevronRight, Save, Loader2, Sparkles, AlertTriangle, ShieldCheck, User, Zap, Lock, AlertCircle } from "lucide-react";
+import { CalendarDays, Clock, ChevronLeft, ChevronRight, Save, Loader2, Sparkles, AlertTriangle, ShieldCheck, User, Zap, Lock, AlertCircle, CheckCircle2 } from "lucide-react";
 import { cn, cleanTeamName } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -73,6 +73,8 @@ export function MatchCalendar({
   const handlePredictionChange = (idx: number, originalIdx: number, type: 'home' | 'away', value: string) => {
     if (isLocked) return;
     const cleanValue = value.slice(-1);
+    
+    // Dispara a atualização imediata (HomeContent gerencia o auto-save via setPrediction)
     setPrediction(originalIdx, type, cleanValue);
 
     if (cleanValue !== "") {
@@ -180,7 +182,6 @@ export function MatchCalendar({
                   </div>
 
                   <div className="flex flex-col items-center justify-center w-1/3 gap-4">
-                    {/* Ajuste de Resultado (Apenas Admin) */}
                     {isAdmin && (
                       <div className="flex flex-col items-center gap-1.5 p-2 bg-primary/5 rounded-2xl border border-dashed border-primary/20 w-full">
                          <div className="flex items-center gap-1 text-[7px] font-black uppercase text-primary">
@@ -212,7 +213,6 @@ export function MatchCalendar({
                       </div>
                     )}
 
-                    {/* Palpite Pessoal / Placar Atual (Todos os usuários, incluindo Admin) */}
                     {(isFinished || isLive) && !isAdmin ? (
                       <div className="flex flex-col items-center gap-3">
                         <div className="flex items-center gap-2 md:gap-4 relative">
@@ -273,6 +273,12 @@ export function MatchCalendar({
                               disabled={isFinished || isCancelled || isOutOfWindow || isLive || isLocked}
                             />
                          </div>
+                         {!isLocked && (
+                           <div className="flex items-center gap-1 mt-1">
+                              <CheckCircle2 className="h-2 w-2 text-secondary opacity-50" />
+                              <span className="text-[6px] font-black uppercase text-muted-foreground/60 tracking-widest">Auto-Save Ativo</span>
+                           </div>
+                         )}
                       </div>
                     )}
                   </div>
@@ -293,7 +299,7 @@ export function MatchCalendar({
                    <div className="flex items-center gap-2">
                       <Clock className="h-3 w-3 text-primary/40" />
                       <span className="text-[10px] font-black italic text-primary/60">
-                        {formatTime(match.utcDate)} {isLive ? "" : `• ${isFinished ? "RESULTADO FINAL" : isCancelled ? "PARTIDA ADIADA" : isLocked ? "PALPITES ENCERRADOS" : "AGUARDANDO PALPITE"}`}
+                        {formatTime(match.utcDate)} {isLive ? "" : `• ${isFinished ? "RESULTADO FINAL" : isCancelled ? "PARTIDA ADIADA" : isLocked ? "PALPITES ENCERRADOS" : "QUILA EM ANDAMENTO"}`}
                       </span>
                    </div>
                    {isEffectivelyInvalid && (

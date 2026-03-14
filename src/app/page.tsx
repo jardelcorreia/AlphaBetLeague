@@ -3,7 +3,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { PLAYERS } from "@/lib/constants";
 import { Match, PlayerPredictions, Prediction, PlayerScore, StandingEntry, ChampionshipWinner, MatchStatus } from "@/lib/types";
@@ -39,8 +38,7 @@ import {
   BellRing,
   CheckCircle2,
   Settings,
-  Camera,
-  AlertCircle
+  Sparkles
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -403,20 +401,61 @@ function HomeContent() {
         myPreds.forEach((pred, idx) => {
           const betId = `${user.uid}_${idx}`;
           const betRef = doc(db, "rounds", roundId, "bets", betId);
-          if (pred.homeScore === "" || pred.awayScore === "") deleteDocumentNonBlocking(betRef);
-          else setDocumentNonBlocking(betRef, { id: betId, userId: user.uid, username: currentUsername, matchId: sortedOrig[idx]?.id || idx, homeScorePrediction: parseInt(pred.homeScore), awayScorePrediction: parseInt(pred.awayScore), dateSubmitted: serverTimestamp() }, { merge: true });
+          if (pred.homeScore === "" && pred.awayScore === "") {
+            deleteDocumentNonBlocking(betRef);
+          } else if (pred.homeScore !== "" || pred.awayScore !== "") {
+            setDocumentNonBlocking(betRef, {
+              id: betId,
+              userId: user.uid,
+              username: currentUsername,
+              matchId: sortedOrig[idx]?.id || idx,
+              homeScorePrediction: pred.homeScore !== "" ? parseInt(pred.homeScore) : null,
+              awayScorePrediction: pred.awayScore !== "" ? parseInt(pred.awayScore) : null,
+              dateSubmitted: serverTimestamp()
+            }, { merge: true });
+          }
         });
       }
-      toast({ title: "Salvo!", description: "Dados sincronizados com sucesso." });
+      toast({ title: "Quila Confirmada!", description: "Seus palpites foram registrados com sucesso." });
     } catch (error) {
       toast({ variant: "destructive", title: "Erro", description: "Falha na sincronização." });
     } finally { setIsSaving(false); }
   };
 
   const handleLogout = () => { setMustChangePassword(false); signOut(auth); };
+
   const updatePrediction = (userId: string, idx: number, type: 'home' | 'away', value: string) => {
     if (userId !== user?.uid || isLocked) return;
-    setPredictions(prev => ({ ...prev, [userId]: (prev[userId] || Array(10).fill({ homeScore: "", awayScore: "" })).map((p, i) => i === idx ? { ...p, [type === 'home' ? 'homeScore' : 'awayScore']: value } : p) }));
+    
+    setPredictions(prev => {
+      const userPreds = prev[userId] || Array(10).fill({ homeScore: "", awayScore: "" });
+      const newPreds = userPreds.map((p, i) => i === idx ? { ...p, [type === 'home' ? 'homeScore' : 'awayScore']: value } : p);
+      
+      if (roundId && user) {
+        const betId = `${user.uid}_${idx}`;
+        const betRef = doc(db, "rounds", roundId, "bets", betId);
+        const updatedPred = newPreds[idx];
+        const currentUsername = currentUserFirestore?.username || user.displayName || "Jogador";
+        const sortedOrig = [...matches].sort((a, b) => (a.originalIndex ?? 0) - (b.originalIndex ?? 0));
+        const matchId = sortedOrig[idx]?.id || idx;
+
+        if (updatedPred.homeScore === "" && updatedPred.awayScore === "") {
+          deleteDocumentNonBlocking(betRef);
+        } else if (updatedPred.homeScore !== "" || updatedPred.awayScore !== "") {
+          setDocumentNonBlocking(betRef, {
+            id: betId,
+            userId: user.uid,
+            username: currentUsername,
+            matchId: matchId,
+            homeScorePrediction: updatedPred.homeScore !== "" ? parseInt(updatedPred.homeScore) : null,
+            awayScorePrediction: updatedPred.awayScore !== "" ? parseInt(updatedPred.awayScore) : null,
+            dateSubmitted: serverTimestamp()
+          }, { merge: true });
+        }
+      }
+      
+      return { ...prev, [userId]: newPreds };
+    });
   };
 
   if (isUserLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
