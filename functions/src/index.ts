@@ -170,7 +170,6 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
   const db = admin.firestore();
   
   try {
-    // 1. Buscar todos os palpites da rodada
     const betsSnapshot = await db.collection(`rounds/${roundId}/bets`).get();
     const betsByUser: Record<string, any[]> = {};
     betsSnapshot.forEach(doc => {
@@ -179,12 +178,10 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       betsByUser[bet.userId].push(bet);
     });
 
-    // 2. Buscar todos os usuários
     const usersSnapshot = await db.collection("users").get();
     const users: any[] = [];
     usersSnapshot.forEach(doc => users.push(doc.data()));
 
-    // 3. Calcular pontos
     const pointsMap: Record<string, number> = {};
     let totalPointsInRound = 0;
     users.forEach(u => {
@@ -212,14 +209,12 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       totalPointsInRound += pts;
     });
 
-    // 4. DETERMINAR VENCEDORES
     const maxPts = Math.max(...Object.values(pointsMap), 0);
     const winnerNames = users
       .filter(u => pointsMap[u.id] === maxPts && maxPts > 0)
       .map(u => u.username || u.id)
       .join(", ");
 
-    // 5. Atualizar o histórico global do campeonato (documento championship)
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
@@ -329,12 +324,12 @@ export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (e
 
 /**
  * Lógica de Notificações de Lembrete:
- * 1. Roda a cada 30 minutos.
- * 2. Verifica se faltam palpites para a rodada atual.
- * 3. Notifica apenas nas 12h que antecedem o primeiro jogo.
+ * 1. Roda a cada 15 minutos para maior precisão.
+ * 2. Envia lembrete de hora em hora nas 12h que antecedem o jogo.
+ * 3. Envia aviso de "Última Chamada" exatamente 15 minutos antes.
  * 4. Respeita o horário de silêncio (22h-08h).
  */
-export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => {
+export const notifyRoundStart = onSchedule("every 15 minutes", async (event) => {
   if (isQuietHours()) return;
   const roundsSnapshot = await admin.firestore()
     .collection("rounds")
@@ -350,7 +345,6 @@ export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => 
   const targetCount = getValidMatchesCount(matches);
   if (targetCount === 0) return;
   
-  // Encontra o horário do primeiro jogo válido
   const firstMatchTime = matches
     .filter((m: any) => m.status !== 'cancelled' && m.utcDate)
     .reduce((earliest: number, m: any) => {
@@ -361,10 +355,15 @@ export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => 
   if (!Number.isFinite(firstMatchTime)) return;
   
   const now = Date.now();
+  const diffToStart = firstMatchTime - now;
+  const fifteenMins = 15 * 60 * 1000;
   const twelveHours = 12 * 60 * 60 * 1000;
-  
-  // Só notifica se estiver no dia do jogo (12h antes até o momento do jogo)
-  if (now < (firstMatchTime - twelveHours) || now >= firstMatchTime) return;
+
+  // Determina o tipo de notificação
+  const isLastCall = diffToStart > 0 && diffToStart <= fifteenMins;
+  const isHourlyReminder = diffToStart > 0 && diffToStart <= twelveHours && new Date().getMinutes() < 15;
+
+  if (!isLastCall && !isHourlyReminder) return;
   
   const usersSnapshot = await admin.firestore().collection("users").get();
   for (const userDoc of usersSnapshot.docs) {
@@ -372,7 +371,6 @@ export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => 
     const userId = userDoc.id;
     if (!userData.fcmTokens || userData.fcmTokens.length === 0) continue;
     
-    // Verifica quantos palpites este usuário já fez para esta rodada específica
     const userBetsSnapshot = await admin.firestore()
       .collection(`rounds/${roundId}/bets`)
       .where("userId", "==", userId)
@@ -382,8 +380,10 @@ export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => 
       const remaining = targetCount - userBetsSnapshot.size;
       const message = {
         notification: {
-          title: "⚠️ PALPITES PENDENTES!",
-          body: `Ei ${userData.username || 'campeão'}, faltam ${remaining} palpite${remaining > 1 ? 's' : ''} para a ${roundData.name}. O primeiro jogo já vai começar!`,
+          title: isLastCall ? "🚨 ÚLTIMA CHAMADA!" : "⚠️ PALPITES PENDENTES!",
+          body: isLastCall 
+            ? `Ei ${userData.username || 'campeão'}, o primeiro jogo começa em 15 minutos! Corre que ainda faltam ${remaining} palpites.`
+            : `Ei ${userData.username || 'campeão'}, faltam ${remaining} palpite${remaining > 1 ? 's' : ''} para a ${roundData.name}. O primeiro jogo começa hoje!`,
         },
         tokens: userData.fcmTokens,
         webpush: { fcmOptions: { link: `${APP_URL}/?tab=jogos` } },
