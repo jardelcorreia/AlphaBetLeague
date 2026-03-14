@@ -284,11 +284,11 @@ function HomeContent() {
 
     const playerStats = uniqueUsers.map(u => {
       let pts = 0, exs = 0, filledValidCount = 0;
-      const userPreds = predictions[u.id];
-      if (!userPreds) return { id: u.id, name: u.username || "Jogador", points: 0, exactScores: 0, betsCompleted: false, betsCount: 0, photoUrl: u.photoUrl, isWinner: false };
+      const userBets = predictions[u.id];
+      if (!userBets) return { id: u.id, name: u.username || "Jogador", points: 0, exactScores: 0, betsCompleted: false, betsCount: 0, photoUrl: u.photoUrl, isWinner: false };
       
       activeIndices.forEach(idx => {
-        const res = origResults[idx], pred = userPreds[idx];
+        const res = origResults[idx], pred = userBets[idx];
         const hasRes = res.homeScore !== "" && res.awayScore !== "";
         const hasPred = pred.homeScore !== "" && pred.awayScore !== "";
         const match = sortedOrig[idx];
