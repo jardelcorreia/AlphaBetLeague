@@ -86,11 +86,33 @@ export function ProfileSettings() {
 
   const handleUpdateName = async () => {
     if (!user || !displayName.trim()) return;
+
+    const trimmedName = displayName.trim();
+    
+    // Validação de Tamanho (3 a 12 caracteres)
+    if (trimmedName.length < 3) {
+      toast({
+        variant: "destructive",
+        title: "Nome muito curto",
+        description: "O seu nome de exibição deve ter pelo menos 3 caracteres."
+      });
+      return;
+    }
+    
+    if (trimmedName.length > 12) {
+      toast({
+        variant: "destructive",
+        title: "Nome muito longo",
+        description: "O seu nome de exibição não pode ultrapassar 12 caracteres."
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      await updateProfile(user, { displayName: displayName.trim() });
+      await updateProfile(user, { displayName: trimmedName });
       const userRef = doc(firestore, "users", user.uid);
-      await updateDoc(userRef, { username: displayName.trim() });
+      await updateDoc(userRef, { username: trimmedName });
       await refreshUser();
       toast({ title: "Perfil Atualizado!", description: "Seu nome de exibição foi alterado." });
     } catch (error) {
@@ -265,7 +287,15 @@ export function ProfileSettings() {
 
         <CardContent className="space-y-8 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="display-name" className="text-[10px] font-black uppercase text-muted-foreground ml-1">Nome de Exibição</Label>
+            <div className="flex justify-between items-end ml-1">
+              <Label htmlFor="display-name" className="text-[10px] font-black uppercase text-muted-foreground">Nome de Exibição</Label>
+              <span className={cn(
+                "text-[8px] font-bold uppercase tracking-tighter",
+                displayName.trim().length < 3 || displayName.trim().length > 12 ? "text-destructive" : "text-muted-foreground/40"
+              )}>
+                {displayName.trim().length}/12
+              </span>
+            </div>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40" />
@@ -274,6 +304,7 @@ export function ProfileSettings() {
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Seu nome no jogo"
+                  maxLength={12}
                   className="h-12 pl-12 rounded-2xl border-primary/10 bg-primary/5 font-bold focus:ring-primary/20"
                 />
               </div>
@@ -285,6 +316,7 @@ export function ProfileSettings() {
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
               </Button>
             </div>
+            <p className="text-[9px] font-bold text-muted-foreground/60 uppercase ml-1 italic">Mínimo 3 e máximo 12 caracteres.</p>
           </div>
 
           <div className="space-y-4">
