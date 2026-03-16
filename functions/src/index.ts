@@ -69,7 +69,7 @@ function getValidMatchesCount(matches: any[]): number {
 
 /**
  * Sincroniza dados da API oficial com o Firestore a cada 15 minutos.
- * Agora também revela os placares automaticamente se o horário de início do primeiro jogo for atingido.
+ * Revela os placares automaticamente baseando-se no horário do primeiro jogo.
  */
 export const syncBrasileiraoData = onSchedule({
   schedule: "every 15 minutes",
@@ -122,7 +122,6 @@ export const syncBrasileiraoData = onSchedule({
     let autoRevealProcessed = existingData ? existingData.autoRevealProcessed : false;
 
     // Lógica de Revelação Automática Baseada em Horário:
-    // Se a rodada ainda está oculta e o horário do primeiro jogo (válido) já passou, revelamos.
     const firstMatchTime = apiMatches
       .filter((m: any) => m.status !== 'cancelled' && m.utcDate)
       .reduce((earliest: number, m: any) => {
@@ -134,8 +133,8 @@ export const syncBrasileiraoData = onSchedule({
     
     if (isScoresHidden && !autoRevealProcessed && Number.isFinite(firstMatchTime) && now >= firstMatchTime) {
       isScoresHidden = false;
-      autoRevealProcessed = true; // Marca que o gatilho automático foi acionado
-      console.log(`syncBrasileiraoData: Rodada ${currentMatchday} atingiu o horário de início (${new Date(firstMatchTime).toISOString()}). Revelando palpites automaticamente.`);
+      autoRevealProcessed = true;
+      console.log(`syncBrasileiraoData: Rodada ${currentMatchday} atingiu o horário de início. Revelando palpites.`);
     }
 
     let finalMatches = apiMatches;
@@ -166,8 +165,6 @@ export const syncBrasileiraoData = onSchedule({
       dateCreated: existingData ? existingData.dateCreated : admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    console.log(`syncBrasileiraoData: Rodada ${currentMatchday} sincronizada.`);
-
   } catch (error) {
     console.error("syncBrasileiraoData: Erro na sincronização:", error);
   }
@@ -175,15 +172,10 @@ export const syncBrasileiraoData = onSchedule({
 
 /**
  * Recalcula e salva automaticamente o ranking sempre que a rodada é atualizada.
- * Disparado por qualquer mudança no documento da rodada.
  */
 export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const after = event.data?.after.data();
-  // PROTEÇÃO: Não processar se a lista de jogos estiver vazia ou for muito pequena (provável erro de estado transient)
-  if (!after || !after.matches || after.matches.length < 5) {
-    console.log(`onRoundUpdateConsolidate: Ignorando atualização com dados incompletos (${after?.matches?.length || 0} jogos).`);
-    return;
-  }
+  if (!after || !after.matches || after.matches.length < 5) return;
 
   const roundId = event.params.roundId;
   const roundNumber = after.roundNumber;
@@ -205,7 +197,6 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
     usersSnapshot.forEach(doc => users.push(doc.data()));
 
     const pointsMap: Record<string, number> = {};
-    let totalPointsInRound = 0;
     users.forEach(u => {
       let pts = 0;
       const userBets = betsByUser[u.id] || [];
@@ -228,7 +219,6 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
         }
       });
       pointsMap[u.id] = pts;
-      totalPointsInRound += pts;
     });
 
     const maxPts = Math.max(...Object.values(pointsMap), 0);
@@ -245,7 +235,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       history = Array.from({ length: 38 }, (_, i) => ({
         round: i + 1,
         winners: "",
-        value: i < 19 ? 6 : 6,
+        value: 6,
         pointsMap: {}
       }));
     }
@@ -257,12 +247,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       pointsMap: pointsMap
     };
 
-    await settingsRef.set({ 
-      history,
-      dateUpdated: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    console.log(`onRoundUpdateConsolidate: Rodada ${roundNumber} recalculada. Total de pontos distribuídos: ${totalPointsInRound}`);
+    await settingsRef.set({ history, dateUpdated: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 
   } catch (error) {
     console.error(`onRoundUpdateConsolidate: Erro na Rodada ${roundNumber}:`, error);
@@ -270,7 +255,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
 });
 
 /**
- * Notifica os usuários quando os palpites da rodada são revelados (isScoresHidden mudou de true para false).
+ * Notifica os usuários quando os palpites da rodada são revelados.
  */
 export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const before = event.data?.before.data();
@@ -303,23 +288,30 @@ export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event
 });
 
 /**
- * Envia notificação "NA MOSCA" se o usuário acertar o placar exato assim que o jogo termina.
+ * Envia notificação "NA MOSCA" se o usuário acertar o placar exato.
+ * CORREÇÃO: Dispara APENAS quando o jogo transiciona estritamente para o status 'finished'.
  */
 export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const after = event.data?.after.data();
   const before = event.data?.before.data();
-  if (!after || !after.matches) return;
+  if (!after || !after.matches || !before || !before.matches) return;
+
   const roundId = event.params.roundId;
   const matches = after.matches;
-  const oldMatches = before?.matches || [];
+  const oldMatches = before.matches;
+
   const betsSnapshot = await admin.firestore().collection(`rounds/${roundId}/bets`).get();
+  
   for (const betDoc of betsSnapshot.docs) {
     const bet = betDoc.data();
     const userId = bet.userId;
     const match = matches.find((m: any) => m.id === bet.matchId);
     const oldMatch = oldMatches.find((m: any) => m.id === bet.matchId);
-    if (match && match.status === 'finished' && oldMatch?.status !== 'finished') {
+
+    // Garantia de disparo: Só se o status mudou para 'finished' e o anterior NÃO era 'finished'
+    if (match && match.status === 'finished' && oldMatch && oldMatch.status !== 'finished') {
       const isExact = bet.homeScorePrediction === match.homeScore && bet.awayScorePrediction === match.awayScore;
+      
       if (isExact) {
         const userDoc = await admin.firestore().collection("users").doc(userId).get();
         const userData = userDoc.data();
@@ -346,10 +338,7 @@ export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (e
 
 /**
  * Lógica de Notificações de Lembrete:
- * 1. Roda a cada 15 minutos para maior precisão.
- * 2. Envia lembrete de hora em hora nas 12h que antecedem o jogo.
- * 3. Envia aviso de "Última Chamada" exatamente 15 minutos antes.
- * 4. Respeita o horário de silêncio (22h-08h).
+ * Roda a cada 15 minutos. Envia aviso de "Última Chamada" 15 minutos antes.
  */
 export const notifyRoundStart = onSchedule("every 15 minutes", async (event) => {
   if (isQuietHours()) return;
@@ -381,7 +370,6 @@ export const notifyRoundStart = onSchedule("every 15 minutes", async (event) => 
   const fifteenMins = 15 * 60 * 1000;
   const twelveHours = 12 * 60 * 60 * 1000;
 
-  // Determina o tipo de notificação
   const isLastCall = diffToStart > 0 && diffToStart <= fifteenMins;
   const isHourlyReminder = diffToStart > 0 && diffToStart <= twelveHours && new Date().getMinutes() < 15;
 
@@ -405,7 +393,7 @@ export const notifyRoundStart = onSchedule("every 15 minutes", async (event) => 
           title: isLastCall ? "🚨 ÚLTIMA CHAMADA!" : "⚠️ PALPITES PENDENTES!",
           body: isLastCall 
             ? `Ei ${userData.username || 'campeão'}, o primeiro jogo começa em 15 minutos! Corre que ainda faltam ${remaining} palpites.`
-            : `Ei ${userData.username || 'campeão'}, faltam ${remaining} palpite${remaining > 1 ? 's' : ''} para a ${roundData.name}. O primeiro jogo começa hoje!`,
+            : `Ei ${userData.username || 'campeão'}, faltam ${remaining} palpite${remaining > 1 ? 's' : ''} para a ${roundData.name}.`,
         },
         tokens: userData.fcmTokens,
         webpush: { fcmOptions: { link: `${APP_URL}/?tab=jogos` } },
