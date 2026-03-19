@@ -7,7 +7,7 @@ import { TEAMS } from "@/lib/constants";
 import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
-import { CalendarDays, Clock, ChevronLeft, ChevronRight, Save, Loader2, Sparkles, AlertTriangle, ShieldCheck, User, Zap, Lock, AlertCircle, CheckCircle2 } from "lucide-react";
+import { CalendarDays, Clock, ChevronLeft, ChevronRight, Save, Loader2, Sparkles, AlertTriangle, ShieldCheck, User, Zap, Lock, AlertCircle, CheckCircle2, TrendingUp } from "lucide-react";
 import { cn, cleanTeamName } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -70,11 +70,27 @@ export function MatchCalendar({
     return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
   };
 
+  const getMatchPoints = (match: Match, pred: Prediction) => {
+    if (!match || (match.status !== 'finished' && match.status !== 'live')) return null;
+    if (match.homeScore === undefined || match.awayScore === undefined || match.homeScore === null || match.awayScore === null) return null;
+    if (!pred.homeScore || !pred.awayScore) return null;
+
+    const rh = match.homeScore;
+    const ra = match.awayScore;
+    const ph = parseInt(pred.homeScore);
+    const pa = parseInt(pred.awayScore);
+
+    if (isNaN(ph) || isNaN(pa)) return null;
+
+    if (ph === rh && pa === ra) return 3;
+    if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) return 1;
+    return 0;
+  };
+
   const handlePredictionChange = (idx: number, originalIdx: number, type: 'home' | 'away', value: string) => {
     if (isLocked) return;
     const cleanValue = value.slice(-1);
     
-    // Dispara a atualização imediata (HomeContent gerencia o auto-save via setPrediction)
     setPrediction(originalIdx, type, cleanValue);
 
     if (cleanValue !== "") {
@@ -126,6 +142,7 @@ export function MatchCalendar({
           const currentPred = predictions[originalIdx] || { homeScore: "", awayScore: "" };
           const isOutOfWindow = match.isValidForPoints === false;
           const isEffectivelyInvalid = isOutOfWindow || isCancelled;
+          const points = getMatchPoints(match, currentPred);
 
           return (
             <Card key={match.id} className={cn(
@@ -230,7 +247,15 @@ export function MatchCalendar({
                           )}>{match.awayScore ?? 0}</span>
                         </div>
                         
-                        <div className="flex flex-col items-center bg-primary/5 px-3 py-1 rounded-xl border border-primary/10 shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
+                        <div className="flex flex-col items-center bg-primary/5 px-3 py-1 rounded-xl border border-primary/10 shadow-sm animate-in fade-in slide-in-from-top-2 duration-500 relative">
+                           {points !== null && (
+                             <Badge className={cn(
+                               "absolute -top-3 -right-3 rounded-lg text-[8px] font-black italic shadow-lg animate-in zoom-in duration-300",
+                               points === 3 ? "bg-secondary text-white" : points === 1 ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"
+                             )}>
+                               {points === 3 ? "+3 PTS" : points === 1 ? "+1 PT" : "0 PTS"}
+                             </Badge>
+                           )}
                            <div className="flex items-center gap-1 text-[7px] font-black uppercase text-muted-foreground/70 tracking-widest">
                               <User className="h-2 w-2" /> Meu Palpite
                            </div>
@@ -340,3 +365,4 @@ export function MatchCalendar({
     </div>
   );
 }
+
