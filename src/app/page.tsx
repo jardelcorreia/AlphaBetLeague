@@ -39,7 +39,8 @@ import {
   BellRing,
   CheckCircle2,
   Settings,
-  Sparkles
+  Sparkles,
+  ArrowRight
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -83,6 +84,7 @@ function HomeContent() {
   const [darkMode, setDarkMode] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [currentRound, setCurrentRound] = useState<number | null>(null);
+  const [systemCurrentRound, setSystemCurrentRound] = useState<number | null>(null);
   const [rawMatches, setRawMatches] = useState<Match[]>([]);
   const [standings, setStandings] = useState<StandingEntry[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
@@ -330,6 +332,7 @@ function HomeContent() {
     async function init() {
       const matchday = await getBrasileiraoCurrentMatchday();
       setCurrentRound(matchday);
+      setSystemCurrentRound(matchday);
     }
     init();
   }, []);
@@ -459,6 +462,8 @@ function HomeContent() {
     });
   };
 
+  const showNavigationBanner = systemCurrentRound !== null && currentRound !== null && systemCurrentRound !== currentRound;
+
   if (isUserLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   if (!user || mustChangePassword) return <LoginScreen forcePasswordChange={mustChangePassword} onPasswordChangeRequired={() => setMustChangePassword(true)} onPasswordChanged={() => setMustChangePassword(false)} />;
 
@@ -513,6 +518,25 @@ function HomeContent() {
         </div>
       </header>
 
+      {showNavigationBanner && (
+        <div className="bg-accent/10 border-b border-accent/20 px-4 py-2 flex items-center justify-between animate-in slide-in-from-top duration-500">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-3 w-3 text-accent" />
+            <p className="text-[10px] font-black italic uppercase text-accent-foreground">
+              Você está vendo a <span className="underline">Rodada #{currentRound}</span>.
+            </p>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setCurrentRound(systemCurrentRound)}
+            className="h-6 px-3 rounded-lg text-[9px] font-black uppercase italic gap-1.5 hover:bg-accent/20 text-accent-foreground"
+          >
+            Voltar para Rodada #{systemCurrentRound} <ArrowRight className="h-2.5 w-2.5" />
+          </Button>
+        </div>
+      )}
+
       <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
         <DialogContent className="max-w-2xl p-0 border-none bg-background shadow-2xl focus:outline-none z-[70] overflow-hidden rounded-3xl">
           <DialogHeader className="sr-only"><DialogTitle>Configurações de Perfil</DialogTitle><DialogDescription>Personalize seu perfil na AlphaBet League.</DialogDescription></DialogHeader>
@@ -548,7 +572,23 @@ function HomeContent() {
             </section>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               <div className="lg:col-span-8">
-                {currentRound !== null && (<MatchCalendar matches={matches} round={currentRound} totalRounds={38} predictions={predictions[user?.uid || ""] || Array(10).fill({ homeScore: "", awayScore: "" })} setPrediction={(idx, type, value) => updatePrediction(user?.uid || "", idx, type, value)} updateMatchManual={() => {}} isAdmin={false} onPrev={() => setCurrentRound(prev => Math.max(1, prev! - 1))} onNext={() => setCurrentRound(prev => Math.min(38, prev! + 1))} onSave={handleSaveAll} isSaving={isSaving} isLocked={isLocked} />)}
+                {currentRound !== null && (
+                  <MatchCalendar 
+                    matches={matches} 
+                    round={currentRound} 
+                    systemCurrentRound={systemCurrentRound}
+                    totalRounds={38} 
+                    predictions={predictions[user?.uid || ""] || Array(10).fill({ homeScore: "", awayScore: "" })} 
+                    setPrediction={(idx, type, value) => updatePrediction(user?.uid || "", idx, type, value)} 
+                    updateMatchManual={() => {}} 
+                    isAdmin={false} 
+                    onPrev={() => setCurrentRound(prev => Math.max(1, prev! - 1))} 
+                    onNext={() => setCurrentRound(prev => Math.min(38, prev! + 1))} 
+                    onSave={handleSaveAll} 
+                    isSaving={isSaving} 
+                    isLocked={isLocked} 
+                  />
+                )}
                 {currentRound === null && (<div className="h-96 flex flex-col items-center justify-center glass-card rounded-[2.5rem] border-dashed border-2 gap-4"><Loader2 className="h-10 w-10 animate-spin text-primary" /><span className="text-sm font-black italic uppercase text-muted-foreground">Buscando rodada atual...</span></div>)}
               </div>
               <div className="lg:col-span-4 hidden lg:block"><AiBetAssistant /></div>

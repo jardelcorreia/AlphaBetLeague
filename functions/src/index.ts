@@ -8,15 +8,11 @@ if (admin.apps.length === 0) {
 }
 
 const APP_URL = "https://alphabetleague.netlify.app";
-// TheSportsDB API - Usando chave de teste '3' ou do ambiente
 const API_KEY = process.env.THESPORTSDB_API_KEY || '3';
 const BASE_URL = `https://www.thesportsdb.com/api/v1/json/${API_KEY}`;
-const LEAGUE_ID = '4351'; // Brasileirão Série A
+const LEAGUE_ID = '4351'; 
 const SEASON = '2026';
 
-/**
- * Verifica se estamos no horário de silêncio (22h às 08h BRT).
- */
 function isQuietHours(): boolean {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('pt-BR', {
@@ -28,39 +24,75 @@ function isQuietHours(): boolean {
   return hour >= 22 || hour < 8;
 }
 
-/**
- * Sincroniza dados da TheSportsDB com o Firestore a cada 15 minutos.
- * Gerencia revelação automática por horário e ocultação em novas rodadas.
- */
+function getValidMatchesCount(matches: any[]): number {
+  if (!matches || matches.length === 0) return 0;
+  const matchesToProcess = matches.slice(0, 10);
+  const dateCounts: Record<string, number> = {};
+  matchesToProcess.forEach(m => {
+    if (m.utcDate) {
+      const date = m.utcDate.split('T')[0];
+      dateCounts[date] = (dateCounts[date] || 0) + 1;
+    }
+  });
+  let mainDateStr = "";
+  let maxCount = -1;
+  for (const date in dateCounts) {
+    if (dateCounts[date] > maxCount) {
+      maxCount = dateCounts[date];
+      mainDateStr = date;
+    }
+  }
+  if (!mainDateStr) return matchesToProcess.filter(m => m.status !== 'cancelled').length;
+  const mainDate = new Date(`${mainDateStr}T12:00:00Z`).getTime();
+  const threeDaysInMs = 3 * 24 * 60 * 60 * 1000;
+  return matchesToProcess.filter(m => {
+    if (m.status === 'cancelled') return false;
+    if (!m.utcDate) return true;
+    const matchTime = new Date(m.utcDate).getTime();
+    const diff = Math.abs(matchTime - mainDate);
+    return diff <= (threeDaysInMs + 12 * 60 * 60 * 1000);
+  }).length;
+}
+
 export const syncBrasileiraoData = onSchedule({
   schedule: "every 15 minutes",
 }, async (event) => {
   try {
-    // 1. Buscar todos os eventos da temporada para determinar a rodada atual
     const eventsResponse = await fetch(`${BASE_URL}/eventsseason.php?id=${LEAGUE_ID}&s=${SEASON}`);
     const eventsData = await eventsResponse.json();
-    
     if (!eventsData.events || eventsData.events.length === 0) return;
 
-    // Ordenar por data para encontrar a rodada vigente
+    const now = Date.now();
     const sortedEvents = [...eventsData.events].sort((a: any, b: any) => 
       new Date(a.strTimestamp).getTime() - new Date(b.strTimestamp).getTime()
     );
 
-    const now = Date.now();
-    
-    // Encontrar o primeiro evento que não terminou ou o último que terminou recentemente
-    const activeEvent = sortedEvents.find((e: any) => 
-      e.strStatus !== 'Match Finished' || (new Date(e.strTimestamp).getTime() > now - 24 * 60 * 60 * 1000)
-    ) || sortedEvents[0];
+    const dateCounts: Record<string, number> = {};
+    sortedEvents.forEach((e: any) => {
+      const matchTime = new Date(e.strTimestamp).getTime();
+      if (matchTime > now - 48 * 60 * 60 * 1000 && matchTime < now + 5 * 24 * 60 * 60 * 1000) {
+        const r = parseInt(e.intRound);
+        dateCounts[r] = (dateCounts[r] || 0) + 1;
+      }
+    });
 
-    const currentMatchday = activeEvent.intRound;
+    let currentMatchday = 1;
+    let maxVotes = -1;
+    for (const r in dateCounts) {
+      if (dateCounts[r] > maxVotes) {
+        maxVotes = dateCounts[r];
+        currentMatchday = parseInt(r);
+      }
+    }
+
+    if (maxVotes === -1) {
+      const upcoming = sortedEvents.find((e: any) => new Date(e.strTimestamp).getTime() > now);
+      currentMatchday = upcoming ? parseInt(upcoming.intRound) : parseInt(sortedEvents[sortedEvents.length - 1].intRound);
+    }
+
     const roundId = `round_${currentMatchday}`;
-    
-    // 2. Buscar jogos específicos desta rodada
     const roundResponse = await fetch(`${BASE_URL}/eventsround.php?id=${LEAGUE_ID}&r=${currentMatchday}&s=${SEASON}`);
     const roundData = await roundResponse.json();
-
     if (!roundData.events) return;
 
     const apiMatches = roundData.events.map((m: any) => {
@@ -68,7 +100,6 @@ export const syncBrasileiraoData = onSchedule({
       if (m.strStatus === 'Match Finished') status = 'finished';
       else if (m.strStatus.includes('In Progress') || m.strStatus.includes('Half Time')) status = 'live';
       else if (m.strStatus === 'Match Postponed' || m.strStatus === 'Cancelled') status = 'cancelled';
-
       return {
         id: parseInt(m.idEvent),
         homeTeam: m.strHomeTeam,
@@ -81,17 +112,42 @@ export const syncBrasileiraoData = onSchedule({
       };
     });
 
-    const roundRef = admin.firestore().collection("rounds").doc(roundId);
+    const db = admin.firestore();
+    const roundRef = db.collection("rounds").doc(roundId);
     const roundDoc = await roundRef.get();
     const existingData = roundDoc.exists ? roundDoc.data() : null;
 
-    // LÓGICA DE VISIBILIDADE:
-    // Se for uma rodada nova (documento não existe), ocultamos por padrão.
-    // Se a rodada já existe, respeitamos o estado atual de 'isScoresHidden'.
+    // Detectar se é uma nova rodada para enviar notificação
+    const settingsRef = db.collection("app_settings").doc("championship");
+    const settingsDoc = await settingsRef.get();
+    const lastNotifiedRound = settingsDoc.data()?.lastNotifiedRound || 0;
+
+    if (currentMatchday > lastNotifiedRound && !isQuietHours()) {
+      const usersSnapshot = await db.collection("users").get();
+      const tokens: string[] = [];
+      usersSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.fcmTokens) tokens.push(...data.fcmTokens);
+      });
+
+      if (tokens.length > 0) {
+        const message = {
+          notification: {
+            title: "🚀 Rodada Liberada!",
+            body: `A ${currentMatchday}ª rodada já está disponível. Dê seus palpites agora!`,
+          },
+          tokens: tokens,
+          webpush: { fcmOptions: { link: `${APP_URL}/?tab=jogos` } },
+          data: { link: `${APP_URL}/?tab=jogos` }
+        };
+        await admin.messaging().sendEachForMulticast(message);
+        await settingsRef.set({ lastNotifiedRound: currentMatchday }, { merge: true });
+      }
+    }
+
     let isScoresHidden = existingData ? existingData.isScoresHidden : true;
     let autoRevealProcessed = existingData ? existingData.autoRevealProcessed : false;
 
-    // Lógica de Revelação Automática Baseada em Horário:
     const firstMatchTime = apiMatches
       .filter((m: any) => m.status !== 'cancelled' && m.utcDate)
       .reduce((earliest: number, m: any) => {
@@ -102,7 +158,6 @@ export const syncBrasileiraoData = onSchedule({
     if (isScoresHidden && !autoRevealProcessed && Number.isFinite(firstMatchTime) && now >= firstMatchTime) {
       isScoresHidden = false;
       autoRevealProcessed = true;
-      console.log(`syncBrasileiraoData: Rodada ${currentMatchday} atingiu o horário de início (${new Date(firstMatchTime).toISOString()}). Revelando palpites.`);
     }
 
     let finalMatches = apiMatches;
@@ -138,19 +193,13 @@ export const syncBrasileiraoData = onSchedule({
   }
 });
 
-/**
- * Recalcula e salva automaticamente o ranking sempre que a rodada é atualizada.
- */
 export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const after = event.data?.after.data();
   if (!after || !after.matches) return;
-
   const roundId = event.params.roundId;
   const roundNumber = after.roundNumber;
   if (!roundNumber) return;
-
   const db = admin.firestore();
-  
   try {
     const betsSnapshot = await db.collection(`rounds/${roundId}/bets`).get();
     const betsByUser: Record<string, any[]> = {};
@@ -159,72 +208,41 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       if (!betsByUser[bet.userId]) betsByUser[bet.userId] = [];
       betsByUser[bet.userId].push(bet);
     });
-
     const usersSnapshot = await db.collection("users").get();
     const users: any[] = [];
     usersSnapshot.forEach(doc => users.push(doc.data()));
-
     const pointsMap: Record<string, number> = {};
     users.forEach(u => {
       let pts = 0;
       const userBets = betsByUser[u.id] || [];
-      
       after.matches.forEach((match: any) => {
         if (match.status !== 'finished' && match.status !== 'live') return;
-        
         const bet = userBets.find(b => b.matchId === match.id);
         if (!bet) return;
-
         const rh = match.homeScore, ra = match.awayScore;
         const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
-
         if (rh !== null && ra !== null && ph !== undefined && pa !== undefined) {
-          if (ph === rh && pa === ra) {
-            pts += 3;
-          } else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) {
-            pts += 1;
-          }
+          if (ph === rh && pa === ra) pts += 3;
+          else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) pts += 1;
         }
       });
       pointsMap[u.id] = pts;
     });
-
     const maxPts = Math.max(...Object.values(pointsMap), 0);
-    const winnerNames = users
-      .filter(u => pointsMap[u.id] === maxPts && maxPts > 0)
-      .map(u => u.username || u.id)
-      .join(", ");
-
+    const winnerNames = users.filter(u => pointsMap[u.id] === maxPts && maxPts > 0).map(u => u.username || u.id).join(", ");
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
-
     if (!history) {
-      history = Array.from({ length: 38 }, (_, i) => ({
-        round: i + 1,
-        winners: "",
-        value: 6,
-        pointsMap: {}
-      }));
+      history = Array.from({ length: 38 }, (_, i) => ({ round: i + 1, winners: "", value: 6, pointsMap: {} }));
     }
-
-    history[roundNumber - 1] = {
-      ...history[roundNumber - 1],
-      round: roundNumber,
-      winners: winnerNames,
-      pointsMap: pointsMap
-    };
-
+    history[roundNumber - 1] = { ...history[roundNumber - 1], round: roundNumber, winners: winnerNames, pointsMap: pointsMap };
     await settingsRef.set({ history, dateUpdated: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-
   } catch (error) {
     console.error(`onRoundUpdateConsolidate: Erro na Rodada ${roundNumber}:`, error);
   }
 });
 
-/**
- * Notifica os usuários quando os palpites da rodada são revelados.
- */
 export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const before = event.data?.before.data();
   const after = event.data?.after.data();
@@ -255,29 +273,21 @@ export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event
   }
 });
 
-/**
- * Envia notificação "NA MOSCA" se o usuário acertar o placar exato ao fim do jogo.
- */
 export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const after = event.data?.after.data();
   const before = event.data?.before.data();
   if (!after || !after.matches || !before || !before.matches) return;
-
   const roundId = event.params.roundId;
   const matches = after.matches;
   const oldMatches = before.matches;
-
   const betsSnapshot = await admin.firestore().collection(`rounds/${roundId}/bets`).get();
-  
   for (const betDoc of betsSnapshot.docs) {
     const bet = betDoc.data();
     const userId = bet.userId;
     const match = matches.find((m: any) => m.id === bet.matchId);
     const oldMatch = oldMatches.find((m: any) => m.id === bet.matchId);
-
     if (match && match.status === 'finished' && oldMatch && oldMatch.status !== 'finished') {
       const isExact = bet.homeScorePrediction === match.homeScore && bet.awayScorePrediction === match.awayScore;
-      
       if (isExact) {
         const userDoc = await admin.firestore().collection("users").doc(userId).get();
         const userData = userDoc.data();
@@ -297,6 +307,52 @@ export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (e
             console.error(`onMatchScoreUpdate: Erro para ${userId}:`, error);
           }
         }
+      }
+    }
+  }
+});
+
+export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => {
+  if (isQuietHours()) return;
+  const db = admin.firestore();
+  const roundsSnapshot = await db.collection("rounds").orderBy("roundNumber", "desc").limit(1).get();
+  if (roundsSnapshot.empty) return;
+  const currentRound = roundsSnapshot.docs[0];
+  const roundData = currentRound.data();
+  const roundId = currentRound.id;
+  if (roundData.isScoresHidden === false) return;
+  const matches = roundData.matches || [];
+  const targetCount = getValidMatchesCount(matches);
+  if (targetCount === 0) return;
+  const firstMatchTime = matches.filter((m: any) => m.status !== 'cancelled' && m.utcDate).reduce((earliest: number, m: any) => {
+    const d = new Date(m.utcDate).getTime();
+    return (d > 0 && d < earliest) ? d : earliest;
+  }, Infinity);
+  if (!Number.isFinite(firstMatchTime)) return;
+  const now = Date.now();
+  const twentyFourHours = 24 * 60 * 60 * 1000;
+  if (now < (firstMatchTime - twentyFourHours) || now >= firstMatchTime) return;
+  const usersSnapshot = await db.collection("users").get();
+  for (const userDoc of usersSnapshot.docs) {
+    const userData = userDoc.data();
+    const userId = userDoc.id;
+    if (!userData.fcmTokens || userData.fcmTokens.length === 0) continue;
+    const userBetsSnapshot = await db.collection(`rounds/${roundId}/bets`).where("userId", "==", userId).get();
+    if (userBetsSnapshot.size < targetCount) {
+      const remaining = targetCount - userBetsSnapshot.size;
+      const message = {
+        notification: {
+          title: "⚠️ PALPITES PENDENTES!",
+          body: `Ei ${userData.username || 'campeão'}, faltam ${remaining} palpite${remaining > 1 ? 's' : ''} para a ${roundData.name}. O primeiro jogo já vai começar!`,
+        },
+        tokens: userData.fcmTokens,
+        webpush: { fcmOptions: { link: `${APP_URL}/?tab=jogos` } },
+        data: { link: `${APP_URL}/?tab=jogos` }
+      };
+      try {
+        await admin.messaging().sendEachForMulticast(message);
+      } catch (error) {
+        console.error(`notifyRoundStart: Erro para ${userId}:`, error);
       }
     }
   }

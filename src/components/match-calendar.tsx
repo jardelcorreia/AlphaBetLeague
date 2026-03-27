@@ -7,7 +7,7 @@ import { TEAMS } from "@/lib/constants";
 import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
-import { CalendarDays, Clock, ChevronLeft, ChevronRight, Save, Loader2, Sparkles, AlertTriangle, ShieldCheck, User, Zap, Lock, AlertCircle, CheckCircle2, TrendingUp } from "lucide-react";
+import { CalendarDays, Clock, ChevronLeft, ChevronRight, Save, Loader2, Sparkles, AlertTriangle, ShieldCheck, User, Zap, Lock, AlertCircle, CheckCircle2, TrendingUp, History, Timer } from "lucide-react";
 import { cn, cleanTeamName } from "@/lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -21,6 +21,7 @@ import {
 interface MatchCalendarProps {
   matches: Match[];
   round: number;
+  systemCurrentRound: number | null;
   totalRounds: number;
   predictions: Prediction[];
   setPrediction: (matchIndex: number, type: 'home' | 'away', value: string) => void;
@@ -36,6 +37,7 @@ interface MatchCalendarProps {
 export function MatchCalendar({ 
   matches, 
   round, 
+  systemCurrentRound,
   totalRounds, 
   predictions,
   setPrediction,
@@ -104,6 +106,10 @@ export function MatchCalendar({
     }
   };
 
+  const isOfficialCurrent = systemCurrentRound === round;
+  const isPastRound = systemCurrentRound ? round < systemCurrentRound : false;
+  const isFutureRound = systemCurrentRound ? round > systemCurrentRound : false;
+
   if (!matches || matches.length === 0) {
     return (
       <div className="h-96 flex flex-col items-center justify-center glass-card rounded-[2.5rem] border-dashed border-2 gap-4">
@@ -120,10 +126,28 @@ export function MatchCalendar({
           <ChevronLeft className="h-6 w-6" />
         </Button>
         <div className="flex flex-col items-center">
-          <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black uppercase mb-1 px-3">Brasileirão 2026</Badge>
+          <div className="flex items-center gap-2 mb-1">
+            <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black uppercase px-3">Brasileirão 2026</Badge>
+            {isOfficialCurrent ? (
+              <Badge className="bg-secondary/10 text-secondary border-none text-[9px] font-black uppercase px-3 flex items-center gap-1">
+                <div className="h-1 w-1 rounded-full bg-secondary animate-pulse" /> Rodada Atual
+              </Badge>
+            ) : isPastRound ? (
+              <Badge className="bg-muted text-muted-foreground border-none text-[9px] font-black uppercase px-3 flex items-center gap-1">
+                <History className="h-2 w-2" /> Encerrada
+              </Badge>
+            ) : (
+              <Badge className="bg-accent/10 text-accent-foreground border-none text-[9px] font-black uppercase px-3 flex items-center gap-1">
+                <Timer className="h-2 w-2" /> Próxima
+              </Badge>
+            )}
+          </div>
           <div className="flex items-baseline gap-2">
              <span className="text-xs font-bold text-muted-foreground uppercase">Rodada</span>
-             <span className="text-2xl font-black italic text-primary leading-none">#{round}</span>
+             <span className={cn(
+               "text-2xl font-black italic leading-none",
+               isOfficialCurrent ? "text-primary" : "text-foreground opacity-60"
+             )}>#{round}</span>
           </div>
         </div>
         <Button variant="ghost" size="icon" onClick={onNext} disabled={round >= totalRounds} className="rounded-2xl hover:bg-primary/10">
@@ -365,4 +389,3 @@ export function MatchCalendar({
     </div>
   );
 }
-
