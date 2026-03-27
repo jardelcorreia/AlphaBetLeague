@@ -522,7 +522,7 @@ function HomeContent() {
         <div className="bg-accent/10 border-b border-accent/20 px-4 py-2 flex items-center justify-between animate-in slide-in-from-top duration-500">
           <div className="flex items-center gap-2">
             <Calendar className="h-3 w-3 text-accent" />
-            <p className="text-[10px] font-black italic uppercase text-accent-foreground">
+            <p className="text-[10px] font-black italic uppercase text-accent">
               Você está vendo a <span className="underline">Rodada #{currentRound}</span>.
             </p>
           </div>
@@ -530,7 +530,7 @@ function HomeContent() {
             variant="ghost" 
             size="sm" 
             onClick={() => setCurrentRound(systemCurrentRound)}
-            className="h-6 px-3 rounded-lg text-[9px] font-black uppercase italic gap-1.5 hover:bg-accent/20 text-accent-foreground"
+            className="h-6 px-3 rounded-lg text-[9px] font-black uppercase italic gap-1.5 hover:bg-accent/20 text-accent"
           >
             Voltar para Rodada #{systemCurrentRound} <ArrowRight className="h-2.5 w-2.5" />
           </Button>

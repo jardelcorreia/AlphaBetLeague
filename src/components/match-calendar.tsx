@@ -137,8 +137,8 @@ export function MatchCalendar({
                 <History className="h-2 w-2" /> Encerrada
               </Badge>
             ) : (
-              <Badge className="bg-accent/10 text-accent-foreground border-none text-[9px] font-black uppercase px-3 flex items-center gap-1">
-                <Timer className="h-2 w-2" /> Próxima
+              <Badge className="bg-accent/10 text-accent border-none text-[9px] font-black uppercase px-3 flex items-center gap-1">
+                <Timer className="h-2 w-2 text-accent" /> Próxima
               </Badge>
             )}
           </div>
