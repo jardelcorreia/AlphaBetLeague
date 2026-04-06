@@ -10,28 +10,29 @@ Este é o portal oficial da AlphaBet League, uma plataforma de palpites para o B
 3. **Ranking**: Acompanhe a classificação geral do campeonato e o saldo bancário da liga.
 4. **Tabela**: Consulte a classificação oficial da Série A atualizada.
 
-## 📦 Como Publicar (Deploy) via Terminal
+## 📦 Como Publicar (Deploy)
 
-Se o botão de "Publish" no painel falhar ou se você quiser forçar uma atualização manual, siga estes passos:
+### Netlify (Hospedagem Frontend)
+O deploy é automático via GitHub. Se encontrar o erro `User git error while checking for ref refs/heads/main`:
+1. Vá no painel do Netlify em **Site settings** > **Build & deploy** > **Continuous Deployment**.
+2. Na seção **Branch to deploy**, verifique se o nome configurado é `main`. 
+3. Se o seu repositório no GitHub ainda usa o nome antigo `master`, clique em **Edit settings** no Netlify e altere a branch de deploy para `master`.
+4. Caso o repositório seja privado, certifique-se de que o Netlify possui permissão de acesso (pode ser necessário clicar em "Link repository" novamente para autorizar).
 
-1. **Atualizar o CLI**: Garanta que tem a versão mais recente: `npm install -g firebase-tools`
+### Firebase (Backend e Automações)
+Se você precisar atualizar as regras do banco de dados ou as funções automáticas (notificações e ranking):
+1. **Atualizar o CLI**: `npm install -g firebase-tools`
 2. **Login**: `firebase login`
 3. **Publicar Regras e Funções**: `firebase deploy --only firestore:rules,functions`
-4. **Publicar App (Next.js)**: 
-   - O nome do seu backend é **studio**.
-   - Use o comando abaixo para forçar uma nova versão do site:
-   `firebase apphosting:rollouts:create studio`
-
-> **💡 Dica de Produção**: Se você publicou e não vê as mudanças, use `Ctrl + F5` (Windows) ou `Cmd + Shift + R` (Mac) para limpar o cache do navegador e do Service Worker.
 
 ## 🔔 Sistema de Notificações (Push)
 
 O app utiliza **Firebase Cloud Messaging (FCM)** e **Cloud Functions** para automação:
 
+- **🚀 Rodada Liberada**: Avisa quando uma nova rodada está aberta para palpites.
 - **👀 Palpites Revelados**: Notifica todos quando os placares dos amigos tornam-se visíveis.
 - **🎯 Na Mosca!**: Alerta imediato e individual quando você acerta um placar exato (3 pontos).
-- **⚠️ Lembrete de Quila**: Job agendado que avisa quem ainda não completou os 10 palpites.
-- **🔗 Deep Linking**: Cliques nas notificações abrem o app diretamente na aba correspondente.
+- **⚠️ Lembrete de Quila**: Job agendado que avisa quem ainda não completou os palpites válidos da rodada atual.
 
 ## 🤖 Tecnologias e Design
 
