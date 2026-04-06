@@ -67,25 +67,30 @@ export const syncBrasileiraoData = onSchedule({
       new Date(a.strTimestamp).getTime() - new Date(b.strTimestamp).getTime()
     );
 
-    const dateCounts: Record<string, number> = {};
+    // Lógica de "Janela de Semana": Busca a rodada que concentra mais jogos nos próximos 7 dias
+    const windowStart = now - 24 * 60 * 60 * 1000;
+    const windowEnd = now + 6 * 24 * 60 * 60 * 1000;
+    const roundVotes: Record<number, number> = {};
+    
     sortedEvents.forEach((e: any) => {
-      const matchTime = new Date(e.strTimestamp).getTime();
-      if (matchTime > now - 48 * 60 * 60 * 1000 && matchTime < now + 5 * 24 * 60 * 60 * 1000) {
+      const ts = new Date(e.strTimestamp).getTime();
+      if (ts >= windowStart && ts <= windowEnd) {
         const r = parseInt(e.intRound);
-        dateCounts[r] = (dateCounts[r] || 0) + 1;
+        roundVotes[r] = (roundVotes[r] || 0) + 1;
       }
     });
 
     let currentMatchday = 1;
-    let maxVotes = -1;
-    for (const r in dateCounts) {
-      if (dateCounts[r] > maxVotes) {
-        maxVotes = dateCounts[r];
+    let maxVotes = 0;
+    Object.entries(roundVotes).forEach(([r, v]) => {
+      if (v > maxVotes) {
+        maxVotes = v;
         currentMatchday = parseInt(r);
       }
-    }
+    });
 
-    if (maxVotes === -1) {
+    // Fallback: Se não houver jogos na janela, pega a rodada do primeiro jogo futuro
+    if (maxVotes === 0) {
       const upcoming = sortedEvents.find((e: any) => new Date(e.strTimestamp).getTime() > now);
       currentMatchday = upcoming ? parseInt(upcoming.intRound) : parseInt(sortedEvents[sortedEvents.length - 1].intRound);
     }
@@ -130,6 +135,8 @@ export const syncBrasileiraoData = onSchedule({
         if (data.fcmTokens) tokens.push(...data.fcmTokens);
       });
 
+      console.log(`syncBrasileiraoData: Detectada nova rodada ${currentMatchday}. Enviando para ${tokens.length} tokens.`);
+
       if (tokens.length > 0) {
         const message = {
           notification: {
@@ -140,13 +147,18 @@ export const syncBrasileiraoData = onSchedule({
           webpush: { fcmOptions: { link: `${APP_URL}/?tab=jogos` } },
           data: { link: `${APP_URL}/?tab=jogos` }
         };
-        await admin.messaging().sendEachForMulticast(message);
-        await settingsRef.set({ lastNotifiedRound: currentMatchday }, { merge: true });
+        try {
+          await admin.messaging().sendEachForMulticast(message);
+          await settingsRef.set({ lastNotifiedRound: currentMatchday }, { merge: true });
+          console.log(`syncBrasileiraoData: Notificações enviadas com sucesso.`);
+        } catch (err) {
+          console.error(`syncBrasileiraoData: Erro ao enviar notificações:`, err);
+        }
       }
     }
 
-    let isScoresHidden = existingData ? existingData.isScoresHidden : true;
-    let autoRevealProcessed = existingData ? existingData.autoRevealProcessed : false;
+    let isScoresHidden = existingData ? (existingData.isScoresHidden ?? true) : true;
+    let autoRevealProcessed = existingData ? (existingData.autoRevealProcessed ?? false) : false;
 
     const firstMatchTime = apiMatches
       .filter((m: any) => m.status !== 'cancelled' && m.utcDate)
@@ -158,6 +170,7 @@ export const syncBrasileiraoData = onSchedule({
     if (isScoresHidden && !autoRevealProcessed && Number.isFinite(firstMatchTime) && now >= firstMatchTime) {
       isScoresHidden = false;
       autoRevealProcessed = true;
+      console.log(`syncBrasileiraoData: Revelando placares da rodada ${currentMatchday} automaticamente.`);
     }
 
     let finalMatches = apiMatches;
@@ -211,9 +224,13 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
     const usersSnapshot = await db.collection("users").get();
     const users: any[] = [];
     usersSnapshot.forEach(doc => users.push(doc.data()));
+    
     const pointsMap: Record<string, number> = {};
+    const exactScoresMap: Record<string, number> = {};
+
     users.forEach(u => {
       let pts = 0;
+      let exs = 0;
       const userBets = betsByUser[u.id] || [];
       after.matches.forEach((match: any) => {
         if (match.status !== 'finished' && match.status !== 'live') return;
@@ -222,21 +239,34 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
         const rh = match.homeScore, ra = match.awayScore;
         const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
         if (rh !== null && ra !== null && ph !== undefined && pa !== undefined) {
-          if (ph === rh && pa === ra) pts += 3;
-          else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) pts += 1;
+          if (ph === rh && pa === ra) {
+            pts += 3;
+            exs += 1;
+          }
+          else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) {
+            pts += 1;
+          }
         }
       });
       pointsMap[u.id] = pts;
+      exactScoresMap[u.id] = exs;
     });
+
     const maxPts = Math.max(...Object.values(pointsMap), 0);
     const winnerNames = users.filter(u => pointsMap[u.id] === maxPts && maxPts > 0).map(u => u.username || u.id).join(", ");
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
     if (!history) {
-      history = Array.from({ length: 38 }, (_, i) => ({ round: i + 1, winners: "", value: 6, pointsMap: {} }));
+      history = Array.from({ length: 38 }, (_, i) => ({ round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} }));
     }
-    history[roundNumber - 1] = { ...history[roundNumber - 1], round: roundNumber, winners: winnerNames, pointsMap: pointsMap };
+    history[roundNumber - 1] = { 
+      ...history[roundNumber - 1], 
+      round: roundNumber, 
+      winners: winnerNames, 
+      pointsMap: pointsMap,
+      exactScoresMap: exactScoresMap
+    };
     await settingsRef.set({ history, dateUpdated: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   } catch (error) {
     console.error(`onRoundUpdateConsolidate: Erro na Rodada ${roundNumber}:`, error);

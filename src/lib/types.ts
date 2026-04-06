@@ -64,6 +64,7 @@ export type ChampionshipWinner = {
   winners: string; // Ex: "Jardel, Werbet"
   value: number;
   pointsMap?: Record<string, number>; // Key is userId
+  exactScoresMap?: Record<string, number>; // Key is userId
 };
 
 export type PlayerOverallStats = {
@@ -71,5 +72,6 @@ export type PlayerOverallStats = {
   wins: number;
   draws: number;
   points: number;
+  exactScores: number; // Nova propriedade
   balance: number;
 };

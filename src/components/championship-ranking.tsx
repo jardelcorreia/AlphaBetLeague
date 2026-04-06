@@ -5,7 +5,7 @@ import React, { useMemo } from "react";
 import { ChampionshipWinner, PlayerOverallStats, PlayerScore } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { Trophy, Medal, Star, TrendingUp, TrendingDown, History, Clock, ChevronDown, Crown } from "lucide-react";
+import { Trophy, Medal, Star, TrendingUp, TrendingDown, History, Clock, ChevronDown, Crown, Target } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { cn } from "@/lib/utils";
@@ -42,7 +42,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
     const stats: Record<string, PlayerOverallStats & { id: string; photoUrl?: string }> = Object.fromEntries(
       uniqueUsers.map((u) => [
         u.id, 
-        { id: u.id, name: u.username, wins: 0, draws: 0, points: 0, balance: 0, photoUrl: u.photoUrl }
+        { id: u.id, name: u.username, wins: 0, draws: 0, points: 0, exactScores: 0, balance: 0, photoUrl: u.photoUrl }
       ])
     );
 
@@ -57,6 +57,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
       processedRounds.add(rw.round);
 
+      // Agregar Pontos e Exatos
       ptsEntries.forEach(([key, pts]) => {
         let playerStat = stats[key];
         if (!playerStat) {
@@ -65,9 +66,11 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
         if (playerStat) {
           playerStat.points += (Number(pts) || 0);
+          playerStat.exactScores += (Number(rw.exactScoresMap?.[key]) || 0);
         }
       });
 
+      // Lógica de Vencedores e Saldo
       const maxPts = Math.max(...ptsEntries.map(([_, p]) => Number(p)));
       if (maxPts > 0) {
         const winnerKeys = ptsEntries.filter(([_, p]) => Number(p) === maxPts).map(([key, _]) => key);
@@ -101,22 +104,25 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       }
     });
 
-    // Adicionamos os pontos da rodada atual se ela ainda não estiver consolidada no histórico
+    // Adicionamos os dados da rodada atual se ela ainda não estiver consolidada no histórico
     if (currentRoundScores && currentRoundNumber && !processedRounds.has(currentRoundNumber)) {
       currentRoundScores.forEach(s => {
         if (stats[s.id]) {
           stats[s.id].points += s.points;
+          stats[s.id].exactScores += s.exactScores;
         }
       });
     }
 
     const hasAnyActivity = Object.values(stats).some(s => s.wins > 0 || s.draws > 0 || s.points > 0 || s.balance !== 0);
 
+    // Critério de Ordenação: Vitórias -> Empates -> Pontos -> Exatos -> Saldo
     return Object.values(stats).sort((a, b) => {
       if (!hasAnyActivity) return a.name.localeCompare(b.name);
       if (b.wins !== a.wins) return b.wins - a.wins;
       if (b.draws !== a.draws) return b.draws - a.draws;
       if (b.points !== a.points) return b.points - a.points;
+      if (b.exactScores !== a.exactScores) return b.exactScores - a.exactScores;
       if (b.balance !== a.balance) return b.balance - a.balance;
       return a.name.localeCompare(b.name);
     });
@@ -239,18 +245,22 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
                      </div>
 
                      <div className="p-5 sm:p-8 space-y-6 sm:space-y-8">
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-4 gap-2">
                           <div className="flex flex-col items-center">
-                             <span className="text-3xl sm:text-4xl font-black italic text-primary leading-none">{player.wins}</span>
-                             <span className="text-[9px] sm:text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Vits</span>
+                             <span className="text-2xl sm:text-3xl font-black italic text-primary leading-none">{player.wins}</span>
+                             <span className="text-[8px] sm:text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Vits</span>
                           </div>
                           <div className="flex flex-col items-center">
-                             <span className="text-3xl sm:text-4xl font-black italic text-foreground leading-none">{player.draws}</span>
-                             <span className="text-[9px] sm:text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Emps</span>
+                             <span className="text-2xl sm:text-3xl font-black italic text-foreground leading-none">{player.draws}</span>
+                             <span className="text-[8px] sm:text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Emps</span>
                           </div>
                           <div className="flex flex-col items-center">
-                             <span className="text-3xl sm:text-4xl font-black italic text-foreground leading-none">{player.points}</span>
-                             <span className="text-[9px] sm:text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Pts</span>
+                             <span className="text-2xl sm:text-3xl font-black italic text-foreground leading-none">{player.points}</span>
+                             <span className="text-[8px] sm:text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Pts</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                             <span className="text-2xl sm:text-3xl font-black italic text-secondary leading-none">{player.exactScores}</span>
+                             <span className="text-[8px] sm:text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Exatos</span>
                           </div>
                         </div>
 
