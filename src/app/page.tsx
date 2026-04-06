@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -12,7 +11,6 @@ import { BettingTable } from "@/components/betting-table";
 import { MatchCalendar } from "@/components/match-calendar";
 import { LeagueStandings } from "@/components/league-standings";
 import { ChampionshipRanking } from "@/components/championship-ranking";
-import { AiBetAssistant } from "@/components/ai-bet-assistant";
 import { ProfileSettings } from "@/components/profile-settings";
 import { LoginScreen } from "@/components/login-screen";
 import { Button } from "@/components/ui/button";
@@ -30,8 +28,6 @@ import {
   Radar,
   RefreshCw,
   UserCircle,
-  Eye,
-  EyeOff,
   Medal,
   Download,
   Smartphone,
@@ -103,7 +99,8 @@ function HomeContent() {
       round: i + 1,
       winners: "",
       value: 6,
-      pointsMap: {}
+      pointsMap: {},
+      exactScoresMap: {}
     }))
   );
 
@@ -462,8 +459,6 @@ function HomeContent() {
     });
   };
 
-  const showNavigationBanner = systemCurrentRound !== null && currentRound !== null && systemCurrentRound !== currentRound;
-
   if (isUserLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   if (!user || mustChangePassword) return <LoginScreen forcePasswordChange={mustChangePassword} onPasswordChangeRequired={() => setMustChangePassword(true)} onPasswordChanged={() => setMustChangePassword(false)} />;
 
@@ -518,25 +513,6 @@ function HomeContent() {
         </div>
       </header>
 
-      {showNavigationBanner && (
-        <div className="bg-accent/10 border-b border-accent/20 px-4 py-2 flex items-center justify-between animate-in slide-in-from-top duration-500">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-3 w-3 text-accent" />
-            <p className="text-[10px] font-black italic uppercase text-accent">
-              Você está vendo a <span className="underline">Rodada #{currentRound}</span>.
-            </p>
-          </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setCurrentRound(systemCurrentRound)}
-            className="h-6 px-3 rounded-lg text-[9px] font-black uppercase italic gap-1.5 hover:bg-accent/20 text-accent"
-          >
-            Voltar para Rodada #{systemCurrentRound} <ArrowRight className="h-2.5 w-2.5" />
-          </Button>
-        </div>
-      )}
-
       <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
         <DialogContent className="max-w-2xl p-0 border-none bg-background shadow-2xl focus:outline-none z-[70] overflow-hidden rounded-3xl">
           <DialogHeader className="sr-only"><DialogTitle>Configurações de Perfil</DialogTitle><DialogDescription>Personalize seu perfil na AlphaBet League.</DialogDescription></DialogHeader>
@@ -570,28 +546,27 @@ function HomeContent() {
               <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Medal className="h-5 w-5 text-accent" /><h2 className="text-lg font-black italic uppercase">Pontuação da Rodada</h2></div>{(loadingMatches || isLoadingBets) && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}</div>
               <RankingSummary scores={scores} isScoresHidden={isEffectivelyHidden} isRoundFinished={isRoundFinished} totalValidMatches={totalValidMatchesCount} />
             </section>
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              <div className="lg:col-span-8">
-                {currentRound !== null && (
-                  <MatchCalendar 
-                    matches={matches} 
-                    round={currentRound} 
-                    systemCurrentRound={systemCurrentRound}
-                    totalRounds={38} 
-                    predictions={predictions[user?.uid || ""] || Array(10).fill({ homeScore: "", awayScore: "" })} 
-                    setPrediction={(idx, type, value) => updatePrediction(user?.uid || "", idx, type, value)} 
-                    updateMatchManual={() => {}} 
-                    isAdmin={false} 
-                    onPrev={() => setCurrentRound(prev => Math.max(1, prev! - 1))} 
-                    onNext={() => setCurrentRound(prev => Math.min(38, prev! + 1))} 
-                    onSave={handleSaveAll} 
-                    isSaving={isSaving} 
-                    isLocked={isLocked} 
-                  />
-                )}
-                {currentRound === null && (<div className="h-96 flex flex-col items-center justify-center glass-card rounded-[2.5rem] border-dashed border-2 gap-4"><Loader2 className="h-10 w-10 animate-spin text-primary" /><span className="text-sm font-black italic uppercase text-muted-foreground">Buscando rodada atual...</span></div>)}
-              </div>
-              <div className="lg:col-span-4 hidden lg:block"><AiBetAssistant /></div>
+            
+            <div className="max-w-5xl mx-auto">
+              {currentRound !== null ? (
+                <MatchCalendar 
+                  matches={matches} 
+                  round={currentRound} 
+                  systemCurrentRound={systemCurrentRound}
+                  totalRounds={38} 
+                  predictions={predictions[user?.uid || ""] || Array(10).fill({ homeScore: "", awayScore: "" })} 
+                  setPrediction={(idx, type, value) => updatePrediction(user?.uid || "", idx, type, value)} 
+                  updateMatchManual={() => {}} 
+                  isAdmin={false} 
+                  onPrev={() => setCurrentRound(prev => Math.max(1, prev! - 1))} 
+                  onNext={() => setCurrentRound(prev => Math.min(38, prev! + 1))} 
+                  onSave={handleSaveAll} 
+                  isSaving={isSaving} 
+                  isLocked={isLocked} 
+                />
+              ) : (
+                <div className="h-96 flex flex-col items-center justify-center glass-card rounded-[2.5rem] border-dashed border-2 gap-4"><Loader2 className="h-10 w-10 animate-spin text-primary" /><span className="text-sm font-black italic uppercase text-muted-foreground">Buscando rodada atual...</span></div>
+              )}
             </div>
           </div>
         </div>
@@ -631,7 +606,7 @@ function HomeContent() {
         <div className="max-w-md mx-auto h-full flex items-center justify-between">
           <button onClick={() => setActiveTab("jogos")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "jogos" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Calendar className={cn("h-6 w-6", activeTab === "jogos" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">QUILA/JOGOS</span></button>
           <button onClick={() => setActiveTab("palpites")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "palpites" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Radar className={cn("h-6 w-6", activeTab === "palpites" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Palpites</span></button>
-          <button onClick={() => setActiveTab("ranking")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "ranking" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Trophy className={cn("h-6 w-6", activeTab === "ranking" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Ranking</span></button>
+          <button onClick={() => setActiveTab("ranking")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "ranking" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Trophy className={cn("h-6 w-6", activeTab === "ranking" && "fill-current")} /><span className="text-[9px) font-black uppercase italic text-center">Ranking</span></button>
           <button onClick={() => setActiveTab("tabela")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "tabela" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><LayoutDashboard className={cn("h-6 w-6", activeTab === "tabela" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Tabela</span></button>
         </div>
       </nav>
