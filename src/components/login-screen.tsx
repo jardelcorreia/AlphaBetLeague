@@ -20,7 +20,9 @@ import {
   ChevronRight, 
   User,
   ArrowRight,
-  ChevronDown
+  ChevronDown,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
@@ -47,6 +49,11 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isReady, setIsReady] = useState(false);
+
+  // States for password visibility
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const stadiumImage = placeholderData.placeholderImages.find(img => img.id === "soccer-stadium");
 
@@ -205,13 +212,20 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40" />
                   <Input
-                    type="password"
+                    type={showNewPassword ? "text" : "password"}
                     placeholder="Mínimo 6 caracteres"
-                    className="h-14 pl-12 rounded-2xl border-primary/10 bg-primary/5 font-bold"
+                    className="h-14 pl-12 pr-12 rounded-2xl border-primary/10 bg-primary/5 font-bold"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-primary/40 hover:text-primary transition-colors"
+                  >
+                    {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </div>
               </div>
               <div className="space-y-2">
@@ -219,13 +233,20 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40" />
                   <Input
-                    type="password"
+                    type={showConfirmPassword ? "text" : "password"}
                     placeholder="Repita a nova senha"
-                    className="h-14 pl-12 rounded-2xl border-primary/10 bg-primary/5 font-bold"
+                    className="h-14 pl-12 pr-12 rounded-2xl border-primary/10 bg-primary/5 font-bold"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-primary/40 hover:text-primary transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </div>
               </div>
               {error && (
@@ -338,12 +359,19 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary/40" />
                     <Input
-                      type="password"
+                      type={showLoginPassword ? "text" : "password"}
                       placeholder="••••••••"
-                      className="h-16 pl-12 rounded-2xl border-primary/10 bg-primary/5 font-black text-lg focus:ring-primary/20"
+                      className="h-16 pl-12 pr-12 rounded-2xl border-primary/10 bg-primary/5 font-black text-lg focus:ring-primary/20"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPassword(!showLoginPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-primary/40 hover:text-primary transition-colors"
+                    >
+                      {showLoginPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
                   </div>
                   <p className="text-[9px] text-muted-foreground font-medium italic px-1">* Primeiro acesso? Use a senha padrão AlphaBet</p>
                 </div>
