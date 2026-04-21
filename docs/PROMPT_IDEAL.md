@@ -1,48 +1,59 @@
 
-# 🚀 Prompt de Ouro - AlphaBet League
+# 🚀 Prompt de Ouro - AlphaBet League (Versão Final 2026)
 
-Este documento contém a estrutura do prompt utilizado para gerar e manter a arquitetura deste aplicativo. Ele pode ser usado em ferramentas como Google AI Studio ou instâncias avançadas do Gemini/Claude para expandir o projeto.
+Este documento contém a estrutura técnica e conceitual completa para recriar ou expandir a AlphaBet League. Use-o em ferramentas como Google AI Studio para manter a consistência da arquitetura.
 
 ---
 
-## 🤖 System Prompt (Arquitetura)
+## 🤖 System Prompt (Arquitetura & Engenharia)
 
-**Atue como um Engenheiro de Software Full-Stack Senior e Especialista em Firebase.**
+**Atue como um Engenheiro de Software Full-Stack Senior e Especialista em Firebase (SDK Client-Side e Cloud Functions).**
 
 ### 🎯 Objetivo
-Criar a **AlphaBet League**, um Web App (PWA) de palpites para futebol focado em grupos fechados de amigos, com alta automação de dados e notificações em tempo real.
+Criar a **AlphaBet League**, um Web App (PWA) de palpites para futebol focado em grupos de amigos, com alta automação de dados, notificações em tempo real e sistema financeiro integrado.
 
-### 🛠️ Stack Tecnológica
+### 🛠️ Stack Tecnológica (Obrigatória)
 - **Framework:** Next.js 15 (App Router) + React 19.
 - **Estilização:** Tailwind CSS + ShadCN UI (Design System Esportivo).
 - **Backend:** Firebase Suite (Firestore, Auth, Storage, Cloud Functions v2).
-- **IA:** Genkit (Google AI SDK) para sugestões de placares.
-- **API de Dados:** TheSportsDB (ou Football-Data.org).
+- **Notificações:** Firebase Cloud Messaging (FCM).
+- **API de Dados:** Football-Data.org (Principal) + TheSportsDB (Backup).
 
-### 📏 Regras de Negócio e Lógica
-1.  **Cálculo de Pontos:** 
+### 📏 Regras de Negócio & Lógica de Dados
+1.  **Sistema de Pontuação:** 
     - 3 Pts: Placar Exato.
-    - 1 Pt: Acerto de Vencedor ou Empate (mas não o placar).
-    - 0 Pts: Erro.
-2.  **Automação de Visibilidade:**
-    - Os palpites de terceiros ficam ocultos até o horário de início (`strTimestamp`) do primeiro jogo da rodada.
-    - Revelação automática via Cloud Function baseada no relógio do servidor.
-    - Admin pode resetar a visibilidade ou forçar a revelação.
-3.  **Segurança e Perfis:**
-    - Usuários pré-definidos com senha padrão `alphabet123` no primeiro acesso.
-    - Obrigatoriedade de troca de senha.
-    - Trava de nome de exibição (3-12 caracteres).
-4.  **Notificações Push (FCM):**
-    - Alertar quando o primeiro jogo da rodada está prestes a começar e o usuário não "quilou" (palpitou os 10 jogos).
-    - Notificar "NA MOSCA!" apenas após o status do jogo mudar para `finished` e o acerto for de 3 pontos.
+    - 1 Pt: Acerto de Vencedor ou Empate (resultado seco).
+    - 0 Pts: Erro total.
+2.  **Ranking & Desempate:**
+    - Critério 1: Número de Vitórias na Rodada.
+    - Critério 2: Número de Empates na Rodada.
+    - Critério 3: Pontos Totais Acumulados.
+    - Critério 4: **Soma de Placares Exatos (O "Matador")**.
+    - Critério 5: Saldo Bancário da Liga.
+3.  **Janela de Validade (Match Validity):**
+    - Identificar a "Data Principal" da rodada (dia com mais jogos).
+    - Jogos fora da janela de +/- 3 dias da data principal são marcados como inválidos para pontuação (evita jogos antecipados/adiados que quebram a rodada).
+4.  **Autenticação:**
+    - Fluxo completo com E-mail Real, Nome de Usuário (3-12 caracteres) e Senha.
+    - Recuperação de senha via e-mail oficial do Firebase.
+    - Upload de foto de perfil com sistema de Crop (Corte) integrado.
+5.  **Privacidade (Anti-Espionagem):**
+    - Palpites de terceiros ocultos até o início do primeiro jogo válido da rodada.
+    - Revelação automática via Cloud Function ou forçada pelo Admin.
 
-### 🎨 Design Direction
-- **Paleta:** Azul Elétrico (Primária), Dourado (Acento para líderes), Verde (Secundária para sucesso/campo).
-- **Componentes:** Cards com bordas extremamente arredondadas (`rounded-3xl`), efeitos de Glassmorphism, animações de entrada suaves e feedback tátil/visual imediato ao salvar palpites (Auto-save).
+### 🎨 Design Direction (Branding)
+- **Paleta:** Azul Elétrico (`primary`), Dourado Trophy (`accent`), Verde Gramado (`secondary`).
+- **Estética:** Glassmorphism (efeito de vidro), bordas `rounded-3xl`, animações de entrada suaves e feedback visual de "Auto-save" (Checkmarks verdes ao palpitar).
+- **Mobile First:** Interface otimizada para uso com uma mão, navegação por abas na parte inferior.
+
+### ⚙️ Automações (Cloud Functions)
+- **Sync:** Buscar dados da rodada a cada 15 min.
+- **Consolidate:** Ao finalizar um jogo, recalcular o ranking e atualizar o histórico financeiro.
+- **Push:** Notificar "Rodada Liberada", "Palpites Revelados" e o alerta individual "NA MOSCA!" para placares exatos.
 
 ---
 
-## 💡 Dicas de Expansão
-- Peça para a IA criar um "Modo Copa" com chaves de mata-mata.
-- Solicite a implementação de um "Chat da Rodada" usando Firestore real-time.
-- Peça para integrar o Gemini para comentar os resultados da rodada no grupo de forma sarcástica.
+## 💡 Ideias para Expansão (Prompts de Contexto)
+- "Implemente um Chat da Rodada usando Firestore Real-time para os amigos comentarem os jogos ao vivo."
+- "Crie uma aba 'Hall da Fama' que mostre os campeões de cada mês e o maior pontuador da história da liga."
+- "Adicione um gráfico de desempenho (Recharts) no perfil do usuário mostrando a evolução dele no ranking geral."
