@@ -4,7 +4,7 @@
     {
       "id": "soccer-stadium",
       "description": "Visão aérea de um estádio de futebol lotado à noite com refletores acesos",
-      "imageUrl": "/login-bg.png",
+      "imageUrl": "https://picsum.photos/seed/stadium-soccer-field-2026/1200/800",
       "imageHint": "soccer stadium"
     },
     {

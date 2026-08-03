@@ -1,45 +1,31 @@
 
 # AlphaBet League - Brasileirão 2026
 
-Este é o portal oficial da AlphaBet League, uma plataforma de palpites para o Brasileirão focada em competição entre amigos e análise de dados.
+Este é o portal oficial da AlphaBet League, uma plataforma de palpites para o Brasileirão focada em competição de alto nível entre amigos e análise de dados em tempo real.
 
-## 🚀 Como usar o App
+## 💡 A Ideia
+A AlphaBet League transforma o acompanhamento do Brasileirão em uma experiência social gamificada. Diferente de bolões comuns, aqui a precisão é recompensada e a estratégia é fundamental. O app automatiza a sincronização de dados, o cálculo de rankings complexos e a gestão financeira da liga, permitindo que os jogadores foquem apenas na "quila".
 
-1. **QUILA/JOGOS**: Veja as partidas da rodada, horários e preencha seus palpites.
-2. **Palpites**: Compare suas predições com as dos outros jogadores em tempo real.
-3. **Ranking**: Acompanhe a classificação geral do campeonato e o saldo bancário da liga.
-4. **Tabela**: Consulte a classificação oficial da Série A atualizada.
+## 🚀 Funcionalidades Principais
+- **QUILA/JOGOS**: Preenchimento intuitivo de palpites com auto-save.
+- **Palpites Revelados**: Sistema anti-espionagem que oculta placares até o início da rodada.
+- **Ranking "Matador"**: Critérios de desempate avançados que valorizam quem acerta o placar exato.
+- **Notificações Push**: Alertas de rodada liberada, palpites visíveis e acertos "Na Mosca!".
+- **Gestão Administrativa**: Controle total sobre valores de apostas e histórico de vencedores.
+
+## 🛠️ Tecnologias
+- **Frontend**: Next.js 15 (App Router), Tailwind CSS, ShadCN UI.
+- **Backend**: Firebase (Auth, Firestore, Storage, Cloud Functions).
+- **Dados**: Sincronização em tempo real via Football-Data.org.
 
 ## 📦 Como Publicar (Deploy)
 
 ### Netlify (Hospedagem Frontend)
-O deploy é automático via GitHub. Se encontrar o erro `User git error while checking for ref refs/heads/main`:
-1. Vá no painel do Netlify em **Site settings** > **Build & deploy** > **Continuous Deployment**.
-2. Na seção **Branch to deploy**, verifique se o nome configurado é `main`. 
-3. Se o seu repositório no GitHub ainda usa o nome antigo `master`, clique em **Edit settings** no Netlify e altere a branch de deploy para `master`.
-4. Caso o repositório seja privado, certifique-se de que o Netlify possui permissão de acesso (pode ser necessário clicar em "Link repository" novamente para autorizar).
+O deploy é automático via GitHub. Caso encontre erro de acesso à branch, verifique se o Netlify está apontando para a branch correta (`main` ou `master`) em **Build settings**.
 
-### Firebase (Backend e Automações)
-Se você precisar atualizar as regras do banco de dados ou as funções automáticas (notificações e ranking):
-1. **Atualizar o CLI**: `npm install -g firebase-tools`
-2. **Login**: `firebase login`
-3. **Publicar Regras e Funções**: `firebase deploy --only firestore:rules,functions`
-
-## 🔔 Sistema de Notificações (Push)
-
-O app utiliza **Firebase Cloud Messaging (FCM)** e **Cloud Functions** para automação:
-
-- **🚀 Rodada Liberada**: Avisa quando uma nova rodada está aberta para palpites.
-- **👀 Palpites Revelados**: Notifica todos quando os placares dos amigos tornam-se visíveis.
-- **🎯 Na Mosca!**: Alerta imediato e individual quando você acerta um placar exato (3 pontos).
-- **⚠️ Lembrete de Quila**: Job agendado que avisa quem ainda não completou os palpites válidos da rodada atual.
-
-## 🤖 Tecnologias e Design
-
-- **Framework**: NextJS 15 (App Router)
-- **UI/UX**: ShadCN UI + Tailwind CSS
-- **Backend**: Firebase (Auth, Firestore, Storage, Functions, Messaging)
-- **IA**: Genkit com modelos Gemini.
+### Firebase (Backend)
+Para atualizar regras e automações:
+`firebase deploy --only firestore:rules,functions`
 
 ---
-Desenvolvido com NextJS, ShadCN UI e Firebase Studio.
+Desenvolvido com foco em performance e paixão por futebol.
