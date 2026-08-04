@@ -11,17 +11,24 @@ A AlphaBet League transforma o acompanhamento do Brasileirão em uma experiênci
 - **Palpites Revelados**: Sistema anti-espionagem que oculta placares até o início da rodada.
 - **Ranking "Matador"**: Critérios de desempate avançados que valorizam quem acerta o placar exato.
 - **Notificações Push**: Alertas de rodada liberada, palpites visíveis e acertos "Na Mosca!".
-- **Gestão Administrativa**: Controle total sobre valores de apostas e histórico de vencedores.
+- **Gestão Administrativa**: Controle total sobre valores de apostas, histórico de vencedores e controle manual de jogos.
+
+## 🕹️ Controle de Jogos (Painel ADM)
+O Administrador possui controle soberano sobre a integridade dos dados da rodada:
+1. **Modo Híbrido**: O app alterna entre sincronização automática (via API) e controle manual.
+2. **Edição Prioritária**: Alterar um placar ou status no Painel ADM ativa a flag `isManual`, impedindo que a automação sobrescreva o ajuste do administrador.
+3. **Gestão de Status**: É possível marcar jogos como "Ao Vivo", "Finalizados" ou "Adiados" (suspendendo a pontuação destes últimos).
+4. **Recuperação**: O botão de "Reset para API" permite descartar alterações manuais e voltar a seguir os dados oficiais em tempo real.
 
 ## 💰 Sistema Financeiro e Pagamentos
 O app funciona como o **contabilista oficial** da liga. O sistema de prêmios segue estas regras:
 
 1. **Valor da Rodada**: Definido pelo Admin (ex: R$ 6,00 por jogador).
-2. **O Vencedor**: O jogador que somar mais pontos na rodada (aplicando os critérios de desempate) vence a rodada.
+2. **O Vencedor**: O jogador que somar mais pontos na rodada vence. Se houver empate, aplicam-se os critérios: 1º Placares Exatos, 2º Vitórias Acumuladas, 3º Saldo Bancário.
 3. **Cálculo do Saldo**:
    - O vencedor recebe o valor da rodada de cada um dos perdedores.
-   - Se houver empate entre 2 jogadores na liderança, o pote acumulado dos perdedores é dividido entre eles.
-4. **Saldo Bancário**: O ranking geral exibe o saldo acumulado (Lucro/Prejuízo) de cada jogador ao longo do campeonato.
+   - Se houver empate entre 2 jogadores na liderança após todos os critérios, o pote acumulado dos perdedores é dividido entre eles.
+4. **Saldo Bancário**: O ranking geral exibe o saldo acumulado (Lucro/Prejuízo) de cada jogador.
 5. **Liquidação**: O app registra as dívidas e créditos. O pagamento real deve ser feito entre os amigos (via PIX, por exemplo) baseando-se nos valores auditados pelo sistema.
 
 ## 🛠️ Tecnologias
