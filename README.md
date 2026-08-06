@@ -31,6 +31,12 @@ O app funciona como o **contabilista oficial** da liga. O sistema de prêmios se
 4. **Saldo Bancário**: O ranking geral exibe o saldo acumulado (Lucro/Prejuízo) de cada jogador.
 5. **Liquidação**: O app registra as dívidas e créditos. O pagamento real deve ser feito entre os amigos (via PIX, por exemplo) baseando-se nos valores auditados pelo sistema.
 
+## 📸 Geração do Card da Rodada (Print)
+O app conta com um motor de visualização técnica para gerar o "espelho" oficial dos palpites:
+1. **Motor de Layout**: Renderiza uma versão de alta fidelidade dos palpites em um canvas virtual de resolução fixa, garantindo qualidade profissional.
+2. **Escalonamento Responsivo**: O card é desenhado em uma resolução ideal para compartilhamento, mas escalonado via CSS `transform: scale()` para caber perfeitamente em telas de celulares sem perder a proporção.
+3. **Visual Data-Tech**: Design dark-premium com tipografia tabular, organizado para que todos os 10 jogos e palpites caibam em um único print limpo e elegante.
+
 ## 🛠️ Tecnologias
 - **Frontend**: Next.js 15 (App Router), Tailwind CSS, ShadCN UI.
 - **Backend**: Firebase (Auth, Firestore, Storage, Cloud Functions).
