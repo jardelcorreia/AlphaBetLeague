@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -33,7 +34,8 @@ import {
   Trash2,
   Zap,
   CheckCircle2,
-  Save
+  Save,
+  CloudDownload
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getTeamAbrev, cn, determineMatchValidity } from "@/lib/utils";
@@ -52,6 +54,7 @@ export default function AdminPage() {
   const [apiMatches, setApiMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [placaresOcultos, setPlacaresOcultos] = useState(true);
   const [roundName, setRoundName] = useState("");
 
@@ -220,6 +223,20 @@ export default function AdminPage() {
     }, { merge: true });
   };
 
+  const handleForceApiSync = async () => {
+    if (apiMatches.length === 0 || !currentRound || !roundId) return;
+    setIsRestoring(true);
+    try {
+      const validApiMatches = determineMatchValidity(apiMatches);
+      await persistRoundChanges(validApiMatches);
+      toast({ title: "Dados Recriados!", description: "A rodada foi restaurada com as informações da API." });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Erro", description: "Falha ao recriar rodada." });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
   const updateMatch = (idx: number, updates: Partial<Match>) => {
     setMatches(prev => {
       const next = prev.map((m, i) => i === idx ? { ...m, ...updates, isManual: true } : m);
@@ -280,7 +297,6 @@ export default function AdminPage() {
       dateUpdated: serverTimestamp(),
     };
 
-    // Se o admin está revelando manualmente, marcamos como processado para que o servidor não tente interferir
     if (newState === false) {
       updateData.autoRevealProcessed = true;
     }
@@ -330,6 +346,16 @@ export default function AdminPage() {
                 <Button variant="outline" size="icon" onClick={() => setCurrentRound(prev => Math.min(38, prev! + 1))} className="h-7 w-7 rounded-lg border-primary/10"><ChevronRight className="h-4 w-4" /></Button>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleForceApiSync} 
+                  disabled={isRestoring || apiMatches.length === 0}
+                  className="rounded-lg h-7 px-3 gap-2 font-black italic uppercase text-[8px] border-primary/20 text-primary hover:bg-primary/5"
+                >
+                  {isRestoring ? <Loader2 className="h-3 w-3 animate-spin" /> : <CloudDownload className="h-3 w-3" />}
+                  Restaurar Dados API
+                </Button>
                 <RoundCardDialog 
                   roundName={roundName}
                   matches={matches}
@@ -341,6 +367,13 @@ export default function AdminPage() {
                 <Button variant={placaresOcultos ? "destructive" : "secondary"} onClick={toggleVisibility} size="sm" className="rounded-lg h-7 px-4 gap-2 font-black italic uppercase text-[8px] shadow-md transition-all active:scale-95">{placaresOcultos ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}{placaresOcultos ? "Revelar Palpites" : "Ocultar Palpites"}</Button>
               </div>
             </section>
+
+            {!roundData && !loading && (
+              <div className="bg-amber-500/10 p-4 rounded-xl border border-amber-500/20 flex flex-col gap-2">
+                <p className="text-[10px] font-black uppercase text-amber-600 leading-tight">Rodada não encontrada no Banco de Dados</p>
+                <p className="text-[9px] font-medium text-amber-700/80">Esta rodada pode ter sido excluída. Use o botão "Restaurar Dados API" acima para recriá-la com as informações oficiais.</p>
+              </div>
+            )}
 
             <div className="bg-primary/10 p-3 rounded-lg flex items-center gap-3 border border-primary/20">
               <Zap className="h-5 w-5 text-primary shrink-0 animate-pulse" />
@@ -451,3 +484,4 @@ export default function AdminPage() {
     </div>
   );
 }
+
