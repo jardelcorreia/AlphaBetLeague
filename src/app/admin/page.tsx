@@ -74,7 +74,12 @@ export default function AdminPage() {
   // Verificação de Admin baseada no Firestore
   const userDocRef = useMemoFirebase(() => user ? doc(db, "users", user.uid) : null, [db, user]);
   const { data: userData, isLoading: isLoadingUser } = useDoc(userDocRef);
-  const isAdmin = userData?.isAdmin === true || user?.email === "jardel@alphabet.com";
+  
+  const isAdmin = useMemo(() => {
+    if (!user) return false;
+    if (user.email === "jardel@alphabet.com") return true;
+    return userData?.isAdmin === true;
+  }, [userData, user]);
 
   const roundId = currentRound ? `round_${currentRound}` : null;
   const roundDocRef = useMemoFirebase(() => (roundId && user) ? doc(db, "rounds", roundId) : null, [db, roundId, user]);
@@ -116,11 +121,30 @@ export default function AdminPage() {
     return next;
   }, [allBets, allUsers]);
 
+  // Logica de redirecionamento robusta
   useEffect(() => {
-    if (!isUserLoading && !isLoadingUser && !isAdmin) {
+    // Só agimos quando o carregamento inicial do Auth terminar
+    if (isUserLoading) return;
+
+    // Se não há usuário, manda para home
+    if (!user) {
       router.push("/");
+      return;
     }
-  }, [isAdmin, isUserLoading, isLoadingUser, router]);
+
+    // Se já terminou de carregar o documento do usuário no Firestore
+    if (!isLoadingUser) {
+      // E confirmamos que NÃO é admin
+      if (!isAdmin) {
+        toast({
+          variant: "destructive",
+          title: "Acesso Negado",
+          description: "Você não tem permissão de administrador."
+        });
+        router.push("/");
+      }
+    }
+  }, [isAdmin, isUserLoading, isLoadingUser, user, router, toast]);
 
   useEffect(() => {
     async function init() {
@@ -309,8 +333,19 @@ export default function AdminPage() {
     });
   };
 
-  if (isUserLoading || isLoadingUser || (userData && !isAdmin)) {
-    return (<div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>);
+  // Enquanto carrega o básico do Auth ou do Firestore
+  if (isUserLoading || isLoadingUser) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="text-[10px] font-black uppercase italic text-muted-foreground tracking-widest">Autenticando Alpha Perfil...</p>
+      </div>
+    );
+  }
+
+  // Se já carregou tudo e não é admin, o useEffect cuidará do redirecionamento
+  if (!isAdmin) {
+    return null;
   }
 
   return (
@@ -484,4 +519,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
