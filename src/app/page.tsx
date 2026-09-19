@@ -128,36 +128,39 @@ function HomeContent() {
     return currentUserFirestore?.isAdmin === true;
   }, [currentUserFirestore]);
 
+  // Lógica de Fusão de Dados (API + Firestore Overrides)
   const matches = useMemo(() => {
-    let baseData: Match[] = [];
+    let baseData = [...rawMatches];
     
-    if (roundData?.matches && Array.isArray(roundData.matches) && roundData.matches.length > 0) {
+    // Se ainda não temos dados da API, usamos os do Firestore como fallback
+    if (baseData.length === 0 && roundData?.matches && Array.isArray(roundData.matches)) {
       baseData = roundData.matches;
-    } else if (rawMatches && rawMatches.length > 0) {
-      baseData = rawMatches;
     }
 
     if (baseData.length === 0) return [];
 
-    let data = determineMatchValidity(baseData);
-
-    if (!(roundData?.matches && Array.isArray(roundData.matches)) && roundData?.matches) {
-       data = data.map(m => {
+    // Mesclamos os dados: Prioridade para overrides manuais do Administrador
+    let merged = baseData.map(m => {
+      if (roundData?.matches && Array.isArray(roundData.matches)) {
         const override = roundData.matches.find((o: any) => o && o.id === m.id);
-        if (override) {
+        if (override && override.isManual === true) {
           return {
             ...m,
             homeScore: (override.homeScore !== undefined && override.homeScore !== null) ? override.homeScore : m.homeScore,
             awayScore: (override.awayScore !== undefined && override.awayScore !== null) ? override.awayScore : m.awayScore,
             status: override.status || m.status,
+            isManual: true
           };
         }
-        return m;
-      });
-    }
+      }
+      return m;
+    });
 
+    // Validamos datas e janela
+    let data = determineMatchValidity(merged);
     let finalMatches = data.map((m, i) => ({ ...m, originalIndex: i }));
 
+    // Ordenação Mobile (Jogos ao vivo no topo)
     if (isMobile) {
       finalMatches.sort((a, b) => {
         const aLive = a.status === 'live';

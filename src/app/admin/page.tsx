@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -70,7 +69,6 @@ export default function AdminPage() {
     }))
   );
 
-  // Verificação de Admin baseada estritamente no Firestore
   const userDocRef = useMemoFirebase(() => user ? doc(db, "users", user.uid) : null, [db, user]);
   const { data: userData, isLoading: isLoadingUser } = useDoc(userDocRef);
   
@@ -124,7 +122,6 @@ export default function AdminPage() {
       router.push("/");
       return;
     }
-    // Agora o redirecionamento é 100% dinâmico baseado no banco
     if (isAdmin === false) {
       toast({
         variant: "destructive",
@@ -191,44 +188,45 @@ export default function AdminPage() {
     return () => clearInterval(interval);
   }, [currentRound]);
 
+  // Sincronização e Fusão Híbrida para o Administrador
   useEffect(() => {
     if (apiMatches.length === 0) return;
-    let merged = determineMatchValidity(apiMatches);
-    if (roundData?.matches && Array.isArray(roundData.matches)) {
-      merged = merged.map(m => {
+    
+    // Mesclamos os dados da API com os Overrides do Firestore
+    let merged = apiMatches.map(m => {
+      if (roundData?.matches && Array.isArray(roundData.matches)) {
         const override = roundData.matches.find((o: any) => o && o.id === m.id);
         if (override) {
-          const hasDifference = 
-            override.isManual === true ||
-            (override.homeScore !== undefined && override.homeScore !== m.homeScore) ||
-            (override.awayScore !== undefined && override.awayScore !== m.awayScore) ||
-            (override.status !== undefined && override.status !== m.status);
-
-          return {
-            ...m,
-            homeScore: (override.homeScore !== undefined && override.homeScore !== null) ? override.homeScore : m.homeScore,
-            awayScore: (override.awayScore !== undefined && override.awayScore !== null) ? override.awayScore : m.awayScore,
-            status: override.status || m.status,
-            isManual: hasDifference
-          };
+          // Se for manual, usamos os dados salvos. Caso contrário, usamos os dados frescos da API.
+          if (override.isManual === true) {
+            return {
+              ...m,
+              homeScore: (override.homeScore !== undefined && override.homeScore !== null) ? override.homeScore : m.homeScore,
+              awayScore: (override.awayScore !== undefined && override.awayScore !== null) ? override.awayScore : m.awayScore,
+              status: override.status || m.status,
+              isManual: true
+            };
+          }
         }
-        return m;
-      });
-    }
-    setMatches(merged);
+      }
+      return m;
+    });
+
+    setMatches(determineMatchValidity(merged));
   }, [apiMatches, roundData?.matches]);
 
   const persistRoundChanges = async (updatedMatches: Match[]) => {
     if (!currentRound || !roundId) return;
     
+    // Filtramos apenas o que é estritamente necessário para o override manual
     const fullMatchList = updatedMatches.map(m => ({
       id: m.id,
-      homeTeam: m.homeTeam || "Time Casa",
-      awayTeam: m.awayTeam || "Time Fora",
+      homeTeam: m.homeTeam,
+      awayTeam: m.awayTeam,
       homeScore: (m.homeScore !== undefined && m.homeScore !== null) ? m.homeScore : null,
       awayScore: (m.awayScore !== undefined && m.awayScore !== null) ? m.awayScore : null,
       status: m.status || 'upcoming',
-      utcDate: m.utcDate || new Date().toISOString(),
+      utcDate: m.utcDate,
       isManual: m.isManual || false,
       matchday: m.matchday || currentRound
     }));
@@ -254,7 +252,9 @@ export default function AdminPage() {
     if (apiMatches.length === 0 || !currentRound || !roundId) return;
     setIsRestoring(true);
     try {
-      const validApiMatches = determineMatchValidity(apiMatches);
+      // Forçamos a limpeza da flag isManual de todos os jogos para voltar ao modo API puro
+      const cleanApiMatches = apiMatches.map(m => ({ ...m, isManual: false }));
+      const validApiMatches = determineMatchValidity(cleanApiMatches);
       await persistRoundChanges(validApiMatches);
       toast({ title: "Dados Recriados!", description: "A rodada foi restaurada com as informações da API." });
     } catch (error: any) {
