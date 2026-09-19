@@ -33,6 +33,7 @@ export function cleanTeamName(name: string): string {
  */
 export function getTeamAbrev(name: string): string {
   const cleaned = cleanTeamName(name);
+  if (!cleaned) return "---";
   const team = Object.values(TEAMS).find((t) => t.nome === cleaned);
   return team ? team.abrev : cleaned.substring(0, 3).toUpperCase();
 }
@@ -41,11 +42,12 @@ export function getTeamAbrev(name: string): string {
  * Implementa a Regra da Janela de Validade (3 dias antes/depois da data principal).
  */
 export function determineMatchValidity(matches: Match[]): Match[] {
-  if (matches.length === 0) return matches;
+  if (!matches || matches.length === 0) return matches;
 
   // 1. Encontrar a Data Principal (dia com mais jogos)
   const dateCounts: Record<string, number> = {};
   matches.forEach(m => {
+    if (!m.utcDate) return;
     const date = m.utcDate.split('T')[0];
     dateCounts[date] = (dateCounts[date] || 0) + 1;
   });
@@ -59,12 +61,16 @@ export function determineMatchValidity(matches: Match[]): Match[] {
     }
   }
 
+  if (!mainDateStr) return matches.map(m => ({ ...m, isValidForPoints: true }));
+
   // Criar data objeto para comparação (meio-dia UTC para evitar problemas de fuso)
   const mainDate = new Date(`${mainDateStr}T12:00:00Z`);
   const threeDaysInMs = 3 * 24 * 60 * 60 * 1000;
 
   // 2. Definir Janela e 3. Marcar Outliers
   return matches.map(m => {
+    if (!m.utcDate) return { ...m, isValidForPoints: false };
+    
     const matchDate = new Date(m.utcDate);
     // Diferença absoluta em milissegundos
     const diff = Math.abs(matchDate.getTime() - mainDate.getTime());

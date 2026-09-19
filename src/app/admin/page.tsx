@@ -123,26 +123,18 @@ export default function AdminPage() {
 
   // Logica de redirecionamento robusta
   useEffect(() => {
-    // Só agimos quando o carregamento inicial do Auth terminar
     if (isUserLoading) return;
-
-    // Se não há usuário, manda para home
     if (!user) {
       router.push("/");
       return;
     }
-
-    // Se já terminou de carregar o documento do usuário no Firestore
-    if (!isLoadingUser) {
-      // E confirmamos que NÃO é admin
-      if (!isAdmin) {
-        toast({
-          variant: "destructive",
-          title: "Acesso Negado",
-          description: "Você não tem permissão de administrador."
-        });
-        router.push("/");
-      }
+    if (!isLoadingUser && !isAdmin) {
+      toast({
+        variant: "destructive",
+        title: "Acesso Negado",
+        description: "Você não tem permissão de administrador."
+      });
+      router.push("/");
     }
   }, [isAdmin, isUserLoading, isLoadingUser, user, router, toast]);
 
@@ -197,7 +189,7 @@ export default function AdminPage() {
     let merged = determineMatchValidity(apiMatches);
     if (roundData?.matches && Array.isArray(roundData.matches)) {
       merged = merged.map(m => {
-        const override = roundData.matches.find((o: any) => o.id === m.id);
+        const override = roundData.matches.find((o: any) => o && o.id === m.id);
         if (override) {
           const hasDifference = 
             override.isManual === true ||
@@ -224,21 +216,21 @@ export default function AdminPage() {
     
     const fullMatchList = updatedMatches.map(m => ({
       id: m.id,
-      homeTeam: m.homeTeam,
-      awayTeam: m.awayTeam,
+      homeTeam: m.homeTeam || "Time Casa",
+      awayTeam: m.awayTeam || "Time Fora",
       homeScore: (m.homeScore !== undefined && m.homeScore !== null) ? m.homeScore : null,
       awayScore: (m.awayScore !== undefined && m.awayScore !== null) ? m.awayScore : null,
       status: m.status || 'upcoming',
-      utcDate: m.utcDate,
+      utcDate: m.utcDate || new Date().toISOString(),
       isManual: m.isManual || false,
-      matchday: m.matchday
+      matchday: m.matchday || currentRound
     }));
 
     const roundRef = doc(db, "rounds", roundId);
     setDocumentNonBlocking(roundRef, {
       id: roundId,
       roundNumber: currentRound,
-      name: roundName,
+      name: roundName || `Rodada ${currentRound}`,
       isScoresHidden: placaresOcultos,
       autoRevealProcessed: roundData?.autoRevealProcessed || false,
       matches: fullMatchList,
@@ -252,7 +244,7 @@ export default function AdminPage() {
     setIsRestoring(true);
     try {
       const validApiMatches = determineMatchValidity(apiMatches);
-      await persistRoundChanges(validApiMatches);
+      persistRoundChanges(validApiMatches);
       toast({ title: "Dados Recriados!", description: "A rodada foi restaurada com as informações da API." });
     } catch (error) {
       toast({ variant: "destructive", title: "Erro", description: "Falha ao recriar rodada." });
@@ -262,21 +254,15 @@ export default function AdminPage() {
   };
 
   const updateMatch = (idx: number, updates: Partial<Match>) => {
-    setMatches(prev => {
-      const next = prev.map((m, i) => i === idx ? { ...m, ...updates, isManual: true } : m);
-      persistRoundChanges(next);
-      return next;
-    });
+    const nextMatches = matches.map((m, i) => i === idx ? { ...m, ...updates, isManual: true } : m);
+    persistRoundChanges(nextMatches);
   };
 
   const resetMatch = (idx: number) => {
     const apiMatch = apiMatches[idx];
     if (!apiMatch) return;
-    setMatches(prev => {
-      const next = prev.map((m, i) => i === idx ? { ...apiMatch, isManual: false } : m);
-      persistRoundChanges(next);
-      return next;
-    });
+    const nextMatches = matches.map((m, i) => i === idx ? { ...apiMatch, isManual: false } : m);
+    persistRoundChanges(nextMatches);
     toast({ title: "Modo API Ativado", description: "O jogo agora segue os dados automáticos." });
   };
 
@@ -333,7 +319,6 @@ export default function AdminPage() {
     });
   };
 
-  // Enquanto carrega o básico do Auth ou do Firestore
   if (isUserLoading || isLoadingUser) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
@@ -343,10 +328,7 @@ export default function AdminPage() {
     );
   }
 
-  // Se já carregou tudo e não é admin, o useEffect cuidará do redirecionamento
-  if (!isAdmin) {
-    return null;
-  }
+  if (!isAdmin) return null;
 
   return (
     <div className="min-h-screen bg-background pb-12">
@@ -426,7 +408,7 @@ export default function AdminPage() {
                 </div>
               ) : matches.length > 0 ? (
                 matches.map((match, idx) => (
-                  <Card key={match.id} className={cn("glass-card border-none rounded-xl overflow-hidden group transition-all", match.isManual && "ring-1 ring-primary/20 bg-primary/[0.02]")}>
+                  <Card key={match.id || idx} className={cn("glass-card border-none rounded-xl overflow-hidden group transition-all", match.isManual && "ring-1 ring-primary/20 bg-primary/[0.02]")}>
                     <CardContent className="p-2 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 flex-1 justify-center">
                         <span className="text-[11px] font-black italic uppercase text-primary w-8 text-right">{getTeamAbrev(match.homeTeam)}</span>
