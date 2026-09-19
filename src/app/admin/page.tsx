@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -64,7 +63,8 @@ export default function AdminPage() {
       round: i + 1,
       winners: "",
       value: 6,
-      pointsMap: {}
+      pointsMap: {},
+      exactScoresMap: {}
     }))
   );
 
@@ -128,11 +128,13 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (settingsData?.history) {
-      setRoundWinners(settingsData.history);
+    if (!isLoadingSettings) {
+      if (settingsData?.history) {
+        setRoundWinners(settingsData.history);
+      }
       setHasLoadedHistory(true);
     }
-  }, [settingsData]);
+  }, [settingsData, isLoadingSettings]);
 
   useEffect(() => {
     if (roundData) {
