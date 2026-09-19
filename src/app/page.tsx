@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
@@ -107,7 +106,7 @@ function HomeContent() {
   const roundId = currentRound ? `round_${currentRound}` : null;
 
   const roundDocRef = useMemoFirebase(() => (roundId && user) ? doc(db, "rounds", roundId) : null, [db, roundId, user]);
-  const { data: roundData } = useDoc(roundDocRef);
+  const { data: roundData, isLoading: isLoadingRound } = useDoc(roundDocRef);
 
   const settingsDocRef = useMemoFirebase(() => user ? doc(db, "app_settings", "championship") : null, [db, user]);
   const { data: settingsData } = useDoc(settingsDocRef);
@@ -125,17 +124,26 @@ function HomeContent() {
     return allUsers?.find(u => u.id === user?.uid);
   }, [allUsers, user]);
 
-  // Verificação de Admin baseada estritamente no Firestore
   const isAdminUser = useMemo(() => {
     return currentUserFirestore?.isAdmin === true;
   }, [currentUserFirestore]);
 
   const matches = useMemo(() => {
-    if (!rawMatches || !rawMatches.length) return [];
-    let data = determineMatchValidity(rawMatches);
-    if (roundData?.matches && Array.isArray(roundData.matches)) {
-      data = data.map(m => {
-        const override = roundData.matches.find((o: any) => o.id === m.id);
+    let baseData: Match[] = [];
+    
+    if (roundData?.matches && Array.isArray(roundData.matches) && roundData.matches.length > 0) {
+      baseData = roundData.matches;
+    } else if (rawMatches && rawMatches.length > 0) {
+      baseData = rawMatches;
+    }
+
+    if (baseData.length === 0) return [];
+
+    let data = determineMatchValidity(baseData);
+
+    if (!(roundData?.matches && Array.isArray(roundData.matches)) && roundData?.matches) {
+       data = data.map(m => {
+        const override = roundData.matches.find((o: any) => o && o.id === m.id);
         if (override) {
           return {
             ...m,
@@ -161,7 +169,7 @@ function HomeContent() {
     }
 
     return finalMatches;
-  }, [rawMatches, roundData?.matches, isMobile]);
+  }, [rawMatches, roundData, isMobile]);
 
   const matchDescriptions = useMemo(() => {
     const sorted = [...matches].sort((a, b) => (a.originalIndex ?? 0) - (b.originalIndex ?? 0));
@@ -546,7 +554,7 @@ function HomeContent() {
               )}
             </div>
             <section className="space-y-4">
-              <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Medal className="h-5 w-5 text-accent" /><h2 className="text-lg font-black italic uppercase">Pontuação da Rodada</h2></div>{(loadingMatches || isLoadingBets) && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}</div>
+              <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Medal className="h-5 w-5 text-accent" /><h2 className="text-lg font-black italic uppercase">Pontuação da Rodada</h2></div>{(loadingMatches || isLoadingBets || isLoadingRound) && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}</div>
               <RankingSummary scores={scores} isScoresHidden={isEffectivelyHidden} isRoundFinished={isRoundFinished} totalValidMatches={totalValidMatchesCount} />
             </section>
             
