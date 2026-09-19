@@ -1,3 +1,4 @@
+
 'use client';
 import { getAuth, type User } from 'firebase/auth';
 
@@ -73,12 +74,25 @@ function buildRequestObject(context: SecurityRuleContext): SecurityRuleRequest {
 }
 
 function buildErrorMessage(requestObject: SecurityRuleRequest, originalMessage?: string): string {
+  let requestString = "indisponível";
+  try {
+    requestString = JSON.stringify(requestObject, (key, value) => {
+      // Evita erros de serialização de objetos complexos do Firebase
+      if (value && typeof value === 'object' && value.constructor && value.constructor.name === 'FieldValue') {
+        return '<FieldValue>';
+      }
+      return value;
+    }, 2);
+  } catch (e) {
+    requestString = "[Erro ao serializar detalhes da requisição]";
+  }
+
   if (originalMessage && !originalMessage.includes("Missing or insufficient permissions")) {
-    return `Firestore Error: ${originalMessage}\n\nContextual Security Rule simulation (if it was a permission issue):\n${JSON.stringify(requestObject, null, 2)}`;
+    return `Firestore Error: ${originalMessage}\n\nContextual Security Rule simulation:\n${requestString}`;
   }
   
   return `Missing or insufficient permissions: The following request was denied by Firestore Security Rules:
-${JSON.stringify(requestObject, null, 2)}`;
+${requestString}`;
 }
 
 export class FirestorePermissionError extends Error {

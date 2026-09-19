@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser, useFirestore, useMemoFirebase, useDoc, useCollection } from "@/firebase";
-import { doc, collection, serverTimestamp } from "firebase/firestore";
+import { doc, collection, serverTimestamp, setDoc } from "firebase/firestore";
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { Match, MatchStatus, ChampionshipWinner, PlayerPredictions } from "@/lib/types";
 import { getBrasileiraoMatches, getBrasileiraoCurrentMatchday } from "@/lib/football-api";
@@ -121,18 +121,18 @@ export default function AdminPage() {
     return next;
   }, [allBets, allUsers]);
 
-  // Logica de redirecionamento robusta
+  // Redirecionamento robusto: Espera carregar perfil antes de decidir
   useEffect(() => {
-    if (isUserLoading) return;
+    if (isUserLoading || isLoadingUser) return;
     if (!user) {
       router.push("/");
       return;
     }
-    if (!isLoadingUser && !isAdmin) {
+    if (isAdmin === false) {
       toast({
         variant: "destructive",
         title: "Acesso Negado",
-        description: "Você não tem permissão de administrador."
+        description: "Somente administradores podem entrar no painel Alpha."
       });
       router.push("/");
     }
@@ -149,7 +149,18 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isLoadingSettings) {
       if (settingsData?.history && Array.isArray(settingsData.history)) {
-        setRoundWinners(settingsData.history);
+        // Garante que o histórico carregado tenha pelo menos a estrutura básica
+        const fullHistory = Array.from({ length: 38 }, (_, i) => {
+          const existing = settingsData.history.find((h: any) => h.round === i + 1);
+          return {
+            round: i + 1,
+            winners: existing?.winners || "",
+            value: existing?.value || (i < 19 ? 6 : 6),
+            pointsMap: existing?.pointsMap || {},
+            exactScoresMap: existing?.exactScoresMap || {}
+          };
+        });
+        setRoundWinners(fullHistory);
       }
       setHasLoadedHistory(true);
     }
@@ -211,7 +222,7 @@ export default function AdminPage() {
     setMatches(merged);
   }, [apiMatches, roundData?.matches]);
 
-  const persistRoundChanges = (updatedMatches: Match[]) => {
+  const persistRoundChanges = async (updatedMatches: Match[]) => {
     if (!currentRound || !roundId) return;
     
     const fullMatchList = updatedMatches.map(m => ({
@@ -226,17 +237,21 @@ export default function AdminPage() {
       matchday: m.matchday || currentRound
     }));
 
-    const roundRef = doc(db, "rounds", roundId);
-    setDocumentNonBlocking(roundRef, {
-      id: roundId,
-      roundNumber: currentRound,
-      name: roundName || `Rodada ${currentRound}`,
-      isScoresHidden: placaresOcultos,
-      autoRevealProcessed: roundData?.autoRevealProcessed || false,
-      matches: fullMatchList,
-      dateUpdated: serverTimestamp(),
-      dateCreated: roundData?.dateCreated || serverTimestamp(),
-    }, { merge: true });
+    try {
+      const roundRef = doc(db, "rounds", roundId);
+      await setDoc(roundRef, {
+        id: roundId,
+        roundNumber: currentRound,
+        name: roundName || `Rodada ${currentRound}`,
+        isScoresHidden: placaresOcultos,
+        autoRevealProcessed: roundData?.autoRevealProcessed || false,
+        matches: fullMatchList,
+        dateUpdated: serverTimestamp(),
+        dateCreated: roundData?.dateCreated || serverTimestamp(),
+      }, { merge: true });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Erro ao Persistir", description: err.message });
+    }
   };
 
   const handleForceApiSync = async () => {
@@ -244,10 +259,10 @@ export default function AdminPage() {
     setIsRestoring(true);
     try {
       const validApiMatches = determineMatchValidity(apiMatches);
-      persistRoundChanges(validApiMatches);
+      await persistRoundChanges(validApiMatches);
       toast({ title: "Dados Recriados!", description: "A rodada foi restaurada com as informações da API." });
-    } catch (error) {
-      toast({ variant: "destructive", title: "Erro", description: "Falha ao recriar rodada." });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Erro", description: error.message || "Falha ao recriar rodada." });
     } finally {
       setIsRestoring(false);
     }
@@ -255,6 +270,7 @@ export default function AdminPage() {
 
   const updateMatch = (idx: number, updates: Partial<Match>) => {
     const nextMatches = matches.map((m, i) => i === idx ? { ...m, ...updates, isManual: true } : m);
+    setMatches(nextMatches);
     persistRoundChanges(nextMatches);
   };
 
@@ -262,6 +278,7 @@ export default function AdminPage() {
     const apiMatch = apiMatches[idx];
     if (!apiMatch) return;
     const nextMatches = matches.map((m, i) => i === idx ? { ...apiMatch, isManual: false } : m);
+    setMatches(nextMatches);
     persistRoundChanges(nextMatches);
     toast({ title: "Modo API Ativado", description: "O jogo agora segue os dados automáticos." });
   };
@@ -270,14 +287,29 @@ export default function AdminPage() {
     if (!hasLoadedHistory || isLoadingSettings) return;
     setSaving(true);
     try {
+      // Saneamento rigoroso para evitar exceções de serialização no Firestore
+      const historyToSave = roundWinners.map(rw => ({
+        round: rw.round || 0,
+        winners: rw.winners || "",
+        value: Number(rw.value) || 0,
+        pointsMap: rw.pointsMap || {},
+        exactScoresMap: rw.exactScoresMap || {}
+      }));
+
       const settingsRef = doc(db, "app_settings", "championship");
-      setDocumentNonBlocking(settingsRef, {
-        history: roundWinners,
+      await setDoc(settingsRef, {
+        history: historyToSave,
         dateUpdated: serverTimestamp(),
       }, { merge: true });
-      toast({ title: "Configurações Salvas!", description: "Valores e vencedores sincronizados." });
-    } catch (error) {
-      toast({ variant: "destructive", title: "Erro", description: "Falha ao salvar configurações." });
+      
+      toast({ title: "Configurações Salvas!", description: "Valores e vencedores sincronizados com sucesso." });
+    } catch (error: any) {
+      console.error("Erro ao salvar financeiro:", error);
+      toast({ 
+        variant: "destructive", 
+        title: "Erro no Salvamento", 
+        description: error.message || "Ocorreu uma exceção ao tentar persistir os dados." 
+      });
     } finally {
       setSaving(false);
     }
@@ -296,27 +328,31 @@ export default function AdminPage() {
     setRoundWinners(prev => prev.map((rw, i) => i === roundIdx ? { ...rw, value: val } : rw));
   };
 
-  const toggleVisibility = () => {
+  const toggleVisibility = async () => {
     if (!roundId) return;
     const newState = !placaresOcultos;
     setPlacaresOcultos(newState);
     
-    const roundRef = doc(db, "rounds", roundId);
-    const updateData: any = {
-      isScoresHidden: newState,
-      dateUpdated: serverTimestamp(),
-    };
+    try {
+      const roundRef = doc(db, "rounds", roundId);
+      const updateData: any = {
+        isScoresHidden: newState,
+        dateUpdated: serverTimestamp(),
+      };
 
-    if (newState === false) {
-      updateData.autoRevealProcessed = true;
+      if (newState === false) {
+        updateData.autoRevealProcessed = true;
+      }
+
+      await setDoc(roundRef, updateData, { merge: true });
+      
+      toast({ 
+        title: newState ? "Palpites Ocultos" : "Palpites Revelados", 
+        description: newState ? "Ninguém vê os palpites alheios." : "Todos agora veem tudo." 
+      });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Erro na Visibilidade", description: err.message });
     }
-
-    setDocumentNonBlocking(roundRef, updateData, { merge: true });
-    
-    toast({ 
-      title: newState ? "Palpites Ocultos" : "Palpites Revelados", 
-      description: newState ? "Ninguém vê os palpites alheios." : "Todos agora veem tudo." 
-    });
   };
 
   if (isUserLoading || isLoadingUser) {

@@ -1,3 +1,4 @@
+
 'use client';
     
 import {
@@ -13,52 +14,77 @@ import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
 export function setDocumentNonBlocking(docRef: DocumentReference, data: any, options: SetOptions) {
-  setDoc(docRef, data, options).catch(firebaseError => {
+  try {
+    setDoc(docRef, data, options).catch(firebaseError => {
+      errorEmitter.emit(
+        'permission-error',
+        new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'write',
+          requestResourceData: data,
+        }, firebaseError)
+      )
+    })
+  } catch (err: any) {
+    console.error("Erro síncrono no setDocumentNonBlocking:", err);
     errorEmitter.emit(
       'permission-error',
       new FirestorePermissionError({
         path: docRef.path,
         operation: 'write',
         requestResourceData: data,
-      }, firebaseError)
+      }, err)
     )
-  })
+  }
 }
 
 export function addDocumentNonBlocking(colRef: CollectionReference, data: any) {
-  return addDoc(colRef, data).catch(firebaseError => {
-    errorEmitter.emit(
-      'permission-error',
-      new FirestorePermissionError({
-        path: colRef.path,
-        operation: 'create',
-        requestResourceData: data,
-      }, firebaseError)
-    )
-  });
+  try {
+    return addDoc(colRef, data).catch(firebaseError => {
+      errorEmitter.emit(
+        'permission-error',
+        new FirestorePermissionError({
+          path: colRef.path,
+          operation: 'create',
+          requestResourceData: data,
+        }, firebaseError)
+      )
+    });
+  } catch (err: any) {
+    console.error("Erro síncrono no addDocumentNonBlocking:", err);
+    return Promise.reject(err);
+  }
 }
 
 export function updateDocumentNonBlocking(docRef: DocumentReference, data: any) {
-  updateDoc(docRef, data).catch(firebaseError => {
-    errorEmitter.emit(
-      'permission-error',
-      new FirestorePermissionError({
-        path: docRef.path,
-        operation: 'update',
-        requestResourceData: data,
-      }, firebaseError)
-    )
-  });
+  try {
+    updateDoc(docRef, data).catch(firebaseError => {
+      errorEmitter.emit(
+        'permission-error',
+        new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'update',
+          requestResourceData: data,
+        }, firebaseError)
+      )
+    });
+  } catch (err: any) {
+    console.error("Erro síncrono no updateDocumentNonBlocking:", err);
+  }
 }
 
 export function deleteDocumentNonBlocking(docRef: DocumentReference) {
-  deleteDoc(docRef).catch(firebaseError => {
-    errorEmitter.emit(
-      'permission-error',
-      new FirestorePermissionError({
-        path: docRef.path,
-        operation: 'delete',
-      }, firebaseError)
-    )
-  });
+  try {
+    deleteDoc(docRef).catch(firebaseError => {
+      errorEmitter.emit(
+        'permission-error',
+        new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'delete',
+        }, firebaseError)
+      )
+    });
+  } catch (err: any) {
+    console.error("Erro síncrono no deleteDocumentNonBlocking:", err);
+  }
 }
