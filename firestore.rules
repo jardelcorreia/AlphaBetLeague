@@ -7,11 +7,11 @@ service cloud.firestore {
      * AlphaBet League Security Rules
      */
 
-    // Função auxiliar para verificar se o usuário é o Administrador (Jardel)
+    // Função auxiliar para verificar se o usuário é o Administrador
     function isAdmin() {
       return request.auth != null && (
-        request.auth.uid == "TquLV2ai1yRgfWPJHZGrHKifgc72" || 
-        request.auth.token.email == "jardel@alphabet.com"
+        request.auth.token.email == "jardel@alphabet.com" || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
       );
     }
 

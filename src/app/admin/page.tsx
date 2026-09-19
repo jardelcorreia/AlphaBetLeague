@@ -68,7 +68,11 @@ export default function AdminPage() {
     }))
   );
 
-  const isAdmin = user?.email === "jardel@alphabet.com";
+  // Verificação de Admin baseada no Firestore
+  const userDocRef = useMemoFirebase(() => user ? doc(db, "users", user.uid) : null, [db, user]);
+  const { data: userData, isLoading: isLoadingUser } = useDoc(userDocRef);
+  const isAdmin = userData?.isAdmin === true || user?.email === "jardel@alphabet.com";
+
   const roundId = currentRound ? `round_${currentRound}` : null;
   const roundDocRef = useMemoFirebase(() => (roundId && user) ? doc(db, "rounds", roundId) : null, [db, roundId, user]);
   const { data: roundData } = useDoc(roundDocRef);
@@ -110,10 +114,10 @@ export default function AdminPage() {
   }, [allBets, allUsers]);
 
   useEffect(() => {
-    if (!isUserLoading && !isAdmin) {
+    if (!isUserLoading && !isLoadingUser && !isAdmin) {
       router.push("/");
     }
-  }, [isAdmin, isUserLoading, router]);
+  }, [isAdmin, isUserLoading, isLoadingUser, router]);
 
   useEffect(() => {
     async function init() {
@@ -287,7 +291,7 @@ export default function AdminPage() {
     });
   };
 
-  if (isUserLoading || !isAdmin) {
+  if (isUserLoading || isLoadingUser || (userData && !isAdmin)) {
     return (<div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>);
   }
 

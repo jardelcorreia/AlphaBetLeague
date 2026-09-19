@@ -1,6 +1,7 @@
+
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -125,7 +126,10 @@ function HomeContent() {
     return allUsers?.find(u => u.id === user?.uid);
   }, [allUsers, user]);
 
-  const isAdminUser = user?.email === "jardel@alphabet.com";
+  // Verificação de Admin baseada no Firestore
+  const isAdminUser = useMemo(() => {
+    return currentUserFirestore?.isAdmin === true || user?.email === "jardel@alphabet.com";
+  }, [currentUserFirestore, user]);
 
   const matches = useMemo(() => {
     if (!rawMatches || !rawMatches.length) return [];
@@ -606,7 +610,7 @@ function HomeContent() {
         <div className="max-w-md mx-auto h-full flex items-center justify-between">
           <button onClick={() => setActiveTab("jogos")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "jogos" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Calendar className={cn("h-6 w-6", activeTab === "jogos" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">QUILA/JOGOS</span></button>
           <button onClick={() => setActiveTab("palpites")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "palpites" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Radar className={cn("h-6 w-6", activeTab === "palpites" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Palpites</span></button>
-          <button onClick={() => setActiveTab("ranking")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "ranking" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Trophy className={cn("h-6 w-6", activeTab === "ranking" && "fill-current")} /><span className="text-[9px) font-black uppercase italic text-center">Ranking</span></button>
+          <button onClick={() => setActiveTab("ranking")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "ranking" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Trophy className={cn("h-6 w-6", activeTab === "ranking" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Ranking</span></button>
           <button onClick={() => setActiveTab("tabela")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "tabela" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><LayoutDashboard className={cn("h-6 w-6", activeTab === "tabela" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Tabela</span></button>
         </div>
       </nav>
@@ -614,10 +618,10 @@ function HomeContent() {
   );
 }
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>}>
       <HomeContent />
-    </React.Suspense>
+    </Suspense>
   );
 }
