@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser, useFirestore, useMemoFirebase, useDoc, useCollection } from "@/firebase";
 import { doc, collection, serverTimestamp, setDoc } from "firebase/firestore";
-import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { Match, MatchStatus, ChampionshipWinner, PlayerPredictions } from "@/lib/types";
 import { getBrasileiraoMatches, getBrasileiraoCurrentMatchday } from "@/lib/football-api";
 import { Button } from "@/components/ui/button";
@@ -71,15 +70,13 @@ export default function AdminPage() {
     }))
   );
 
-  // Verificação de Admin baseada no Firestore
+  // Verificação de Admin baseada estritamente no Firestore
   const userDocRef = useMemoFirebase(() => user ? doc(db, "users", user.uid) : null, [db, user]);
   const { data: userData, isLoading: isLoadingUser } = useDoc(userDocRef);
   
   const isAdmin = useMemo(() => {
-    if (!user) return false;
-    if (user.email === "jardel@alphabet.com") return true;
     return userData?.isAdmin === true;
-  }, [userData, user]);
+  }, [userData]);
 
   const roundId = currentRound ? `round_${currentRound}` : null;
   const roundDocRef = useMemoFirebase(() => (roundId && user) ? doc(db, "rounds", roundId) : null, [db, roundId, user]);
@@ -121,13 +118,13 @@ export default function AdminPage() {
     return next;
   }, [allBets, allUsers]);
 
-  // Redirecionamento robusto: Espera carregar perfil antes de decidir
   useEffect(() => {
     if (isUserLoading || isLoadingUser) return;
     if (!user) {
       router.push("/");
       return;
     }
+    // Agora o redirecionamento é 100% dinâmico baseado no banco
     if (isAdmin === false) {
       toast({
         variant: "destructive",
@@ -149,7 +146,6 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isLoadingSettings) {
       if (settingsData?.history && Array.isArray(settingsData.history)) {
-        // Garante que o histórico carregado tenha pelo menos a estrutura básica
         const fullHistory = Array.from({ length: 38 }, (_, i) => {
           const existing = settingsData.history.find((h: any) => h.round === i + 1);
           return {
@@ -287,7 +283,6 @@ export default function AdminPage() {
     if (!hasLoadedHistory || isLoadingSettings) return;
     setSaving(true);
     try {
-      // Saneamento rigoroso para evitar exceções de serialização no Firestore
       const historyToSave = roundWinners.map(rw => ({
         round: rw.round || 0,
         winners: rw.winners || "",

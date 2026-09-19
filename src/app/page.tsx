@@ -1,11 +1,11 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { PLAYERS } from "@/lib/constants";
-import { Match, PlayerPredictions, Prediction, PlayerScore, StandingEntry, ChampionshipWinner, MatchStatus } from "@/lib/types";
+import { Match, PlayerPredictions, Prediction, PlayerScore, StandingEntry, ChampionshipWinner } from "@/lib/types";
 import { RankingSummary } from "@/components/ranking-summary";
 import { BettingTable } from "@/components/betting-table";
 import { MatchCalendar } from "@/components/match-calendar";
@@ -125,10 +125,10 @@ function HomeContent() {
     return allUsers?.find(u => u.id === user?.uid);
   }, [allUsers, user]);
 
-  // Verificação de Admin baseada no Firestore
+  // Verificação de Admin baseada estritamente no Firestore
   const isAdminUser = useMemo(() => {
-    return currentUserFirestore?.isAdmin === true || user?.email === "jardel@alphabet.com";
-  }, [currentUserFirestore, user]);
+    return currentUserFirestore?.isAdmin === true;
+  }, [currentUserFirestore]);
 
   const matches = useMemo(() => {
     if (!rawMatches || !rawMatches.length) return [];
@@ -307,13 +307,13 @@ function HomeContent() {
       return { id: u.id, name: u.username || "Jogador", points: pts, exactScores: exs, betsCompleted: filledValidCount >= totalValidMatchesCount && totalValidMatchesCount > 0, betsCount: filledValidCount, photoUrl: u.photoUrl, isWinner: false };
     });
 
-    const hasAnyPoints = playerStats.some(s => s.points > 0);
-    const sorted = hasAnyPoints ? [...playerStats].sort((a, b) => b.points - a.points || b.exactScores - a.exactScores || (a.name || "").localeCompare(b.name || "")) : [...playerStats].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const hasAnyActivity = playerStats.some(s => s.points > 0);
+    const sorted = hasAnyActivity ? [...playerStats].sort((a, b) => b.points - a.points || b.exactScores - a.exactScores || (a.name || "").localeCompare(b.name || "")) : [...playerStats].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     const finalScoresWithWinner = sorted.map(p => ({ ...p, isWinner: false }));
     const leader = sorted[0];
     const runnerUp = sorted[1];
     
-    if (hasAnyPoints) {
+    if (hasAnyActivity) {
       let isDefined = false;
       if (isRoundFinished) isDefined = true;
       else if (runnerUp) {
