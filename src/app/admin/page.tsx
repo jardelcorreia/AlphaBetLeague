@@ -103,7 +103,7 @@ export default function AdminPage() {
       const parts = bet.id.split('_');
       const matchIdx = parseInt(parts[parts.length - 1]);
       const bUserId = bet.userId;
-      if (bUserId && next[bUserId] && matchIdx >= 0 && matchIdx < 10) {
+      if (bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10) {
         next[bUserId][matchIdx] = { 
           homeScore: bet.homeScorePrediction?.toString() || "", 
           awayScore: bet.awayScorePrediction?.toString() || "" 
@@ -129,7 +129,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!isLoadingSettings) {
-      if (settingsData?.history) {
+      if (settingsData?.history && Array.isArray(settingsData.history)) {
         setRoundWinners(settingsData.history);
       }
       setHasLoadedHistory(true);
@@ -152,7 +152,7 @@ export default function AdminPage() {
       setLoading(true);
       try {
         const rawData = await getBrasileiraoMatches(currentRound!);
-        setApiMatches(rawData);
+        setApiMatches(rawData || []);
       } catch (error) {
         console.error("Falha ao carregar jogos oficiais:", error);
       } finally {
@@ -326,7 +326,7 @@ export default function AdminPage() {
             <section className="flex flex-col sm:flex-row items-center justify-between bg-primary/5 p-3 rounded-xl border border-primary/10 gap-3">
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" onClick={() => setCurrentRound(prev => Math.max(1, prev! - 1))} className="h-7 w-7 rounded-lg border-primary/10"><ChevronLeft className="h-4 w-4" /></Button>
-                <div className="text-center min-w-[50px]"><h2 className="text-sm font-black italic uppercase text-primary leading-tight">#{currentRound}</h2></div>
+                <div className="text-center min-w-[50px]"><h2 className="text-sm font-black italic uppercase text-primary leading-tight">#{currentRound || "?"}</h2></div>
                 <Button variant="outline" size="icon" onClick={() => setCurrentRound(prev => Math.min(38, prev! + 1))} className="h-7 w-7 rounded-lg border-primary/10"><ChevronRight className="h-4 w-4" /></Button>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2">
@@ -356,56 +356,62 @@ export default function AdminPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary opacity-20" />
                   <span className="text-[10px] font-black uppercase italic text-muted-foreground">Sincronizando com API...</span>
                 </div>
-              ) : matches.map((match, idx) => (
-                <Card key={match.id} className={cn("glass-card border-none rounded-xl overflow-hidden group transition-all", match.isManual && "ring-1 ring-primary/20 bg-primary/[0.02]")}>
-                  <CardContent className="p-2 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 flex-1 justify-center">
-                      <span className="text-[11px] font-black italic uppercase text-primary w-8 text-right">{getTeamAbrev(match.homeTeam)}</span>
-                      <div className="flex items-center gap-1 px-2 py-1 bg-muted/20 rounded-lg border border-primary/5">
-                        <input 
-                          type="number" 
-                          value={match.homeScore ?? ""} 
-                          onChange={(e) => updateMatch(idx, { homeScore: e.target.value === "" ? undefined : parseInt(e.target.value) })} 
-                          className="w-6 h-6 text-center rounded font-black text-xs bg-background border border-primary/10 focus:outline-none focus:ring-1 focus:ring-primary/20" 
-                          placeholder="-" 
-                        />
-                        <span className="font-black text-primary/20 italic text-[9px]">X</span>
-                        <input 
-                          type="number" 
-                          value={match.awayScore ?? ""} 
-                          onChange={(e) => updateMatch(idx, { awayScore: e.target.value === "" ? undefined : parseInt(e.target.value) })} 
-                          className="w-6 h-6 text-center rounded font-black text-xs bg-background border border-primary/10 focus:outline-none focus:ring-1 focus:ring-primary/20" 
-                          placeholder="-" 
-                        />
+              ) : matches.length > 0 ? (
+                matches.map((match, idx) => (
+                  <Card key={match.id} className={cn("glass-card border-none rounded-xl overflow-hidden group transition-all", match.isManual && "ring-1 ring-primary/20 bg-primary/[0.02]")}>
+                    <CardContent className="p-2 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-1 justify-center">
+                        <span className="text-[11px] font-black italic uppercase text-primary w-8 text-right">{getTeamAbrev(match.homeTeam)}</span>
+                        <div className="flex items-center gap-1 px-2 py-1 bg-muted/20 rounded-lg border border-primary/5">
+                          <input 
+                            type="number" 
+                            value={match.homeScore ?? ""} 
+                            onChange={(e) => updateMatch(idx, { homeScore: e.target.value === "" ? undefined : parseInt(e.target.value) })} 
+                            className="w-6 h-6 text-center rounded font-black text-xs bg-background border border-primary/10 focus:outline-none focus:ring-1 focus:ring-primary/20" 
+                            placeholder="-" 
+                          />
+                          <span className="font-black text-primary/20 italic text-[9px]">X</span>
+                          <input 
+                            type="number" 
+                            value={match.awayScore ?? ""} 
+                            onChange={(e) => updateMatch(idx, { awayScore: e.target.value === "" ? undefined : parseInt(e.target.value) })} 
+                            className="w-6 h-6 text-center rounded font-black text-xs bg-background border border-primary/10 focus:outline-none focus:ring-1 focus:ring-primary/20" 
+                            placeholder="-" 
+                          />
+                        </div>
+                        <span className="text-[11px] font-black italic uppercase text-primary w-8 text-left">{getTeamAbrev(match.awayTeam)}</span>
                       </div>
-                      <span className="text-[11px] font-black italic uppercase text-primary w-8 text-left">{getTeamAbrev(match.awayTeam)}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Select value={match.status} onValueChange={(val: MatchStatus) => updateMatch(idx, { status: val })}>
-                        <SelectTrigger className="h-7 w-20 rounded-lg font-black italic uppercase text-[7px] border-primary/5 bg-background"><SelectValue /></SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                          <SelectItem value="upcoming" className="text-[8px] font-black italic uppercase">Agendado</SelectItem>
-                          <SelectItem value="live" className="text-[8px] font-black italic uppercase text-destructive">Ao Vivo</SelectItem>
-                          <SelectItem value="finished" className="text-[8px] font-black italic uppercase text-secondary">Fim</SelectItem>
-                          <SelectItem value="cancelled" className="text-[8px] font-black italic uppercase text-muted-foreground">Adiado</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {match.isManual ? (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button variant="ghost" size="icon" onClick={() => resetMatch(idx)} className="h-7 w-7 text-destructive hover:bg-destructive/10"><Trash2 className="h-3 w-3" /></Button>
-                            </TooltipTrigger>
-                            <TooltipContent><p className="text-[10px] font-bold">Voltar para Modo API</p></TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ) : (
-                        <div className="w-7 flex justify-center"><RefreshCw className="h-2.5 w-2.5 text-primary/20" /></div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Select value={match.status} onValueChange={(val: MatchStatus) => updateMatch(idx, { status: val })}>
+                          <SelectTrigger className="h-7 w-20 rounded-lg font-black italic uppercase text-[7px] border-primary/5 bg-background"><SelectValue /></SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            <SelectItem value="upcoming" className="text-[8px] font-black italic uppercase">Agendado</SelectItem>
+                            <SelectItem value="live" className="text-[8px] font-black italic uppercase text-destructive">Ao Vivo</SelectItem>
+                            <SelectItem value="finished" className="text-[8px] font-black italic uppercase text-secondary">Fim</SelectItem>
+                            <SelectItem value="cancelled" className="text-[8px] font-black italic uppercase text-muted-foreground">Adiado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {match.isManual ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => resetMatch(idx)} className="h-7 w-7 text-destructive hover:bg-destructive/10"><Trash2 className="h-3 w-3" /></Button>
+                              </TooltipTrigger>
+                              <TooltipContent><p className="text-[10px] font-bold">Voltar para Modo API</p></TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <div className="w-7 flex justify-center"><RefreshCw className="h-2.5 w-2.5 text-primary/20" /></div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <div className="py-20 text-center glass-card rounded-2xl border-dashed border-2 border-primary/10">
+                   <p className="text-[10px] font-black uppercase text-muted-foreground">Nenhum jogo encontrado para esta rodada.</p>
+                </div>
+              )}
             </section>
           </TabsContent>
 

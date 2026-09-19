@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
@@ -283,7 +282,7 @@ function HomeContent() {
       const match = sortedOrig[idx];
       const isMatchValid = match?.isValidForPoints !== false && match?.status !== 'cancelled';
       const isFinished = match?.status === 'finished';
-      return isMatchValid && !isFinished && (res.homeScore === "" || res.awayScore === "");
+      return isMatchValid && !isFinished && (res?.homeScore === "" || res?.awayScore === "");
     }).length;
 
     const playerStats = uniqueUsers.map(u => {
@@ -293,8 +292,8 @@ function HomeContent() {
       
       activeIndices.forEach(idx => {
         const res = origResults[idx], pred = userBets[idx];
-        const hasRes = res.homeScore !== "" && res.awayScore !== "";
-        const hasPred = pred.homeScore !== "" && pred.awayScore !== "";
+        const hasRes = res?.homeScore !== "" && res?.awayScore !== "";
+        const hasPred = pred?.homeScore !== "" && pred?.awayScore !== "";
         const match = sortedOrig[idx];
         const isMatchValid = match?.isValidForPoints !== false && match?.status !== 'cancelled';
         if (isMatchValid && hasPred) filledValidCount++;
@@ -339,7 +338,7 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    if (settingsData?.history) {
+    if (settingsData?.history && Array.isArray(settingsData.history)) {
       setRoundWinners(settingsData.history);
     }
   }, [settingsData]);
@@ -363,8 +362,8 @@ function HomeContent() {
           getBrasileiraoMatches(currentRound!),
           getLeagueStandings()
         ]);
-        setRawMatches(raw);
-        setStandings(leagueTable);
+        setRawMatches(raw || []);
+        setStandings(leagueTable || []);
       } catch (error) {
         console.error("Erro ao carregar dados oficiais:", error);
       } finally {
@@ -386,7 +385,7 @@ function HomeContent() {
         const parts = bet.id.split('_');
         const matchIdx = parseInt(parts[parts.length - 1]);
         const bUserId = bet.userId;
-        if (bUserId && next[bUserId] && matchIdx >= 0 && matchIdx < 10) {
+        if (bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10) {
           next[bUserId][matchIdx] = { homeScore: bet.homeScorePrediction?.toString() || "", awayScore: bet.awayScorePrediction?.toString() || "" };
         }
       });
@@ -490,7 +489,7 @@ function HomeContent() {
           <div className="flex items-center gap-2 md:gap-3">
              {isAdminUser && (<Link href="/admin"><Button variant="outline" size="sm" className="rounded-xl h-8 text-[9px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Shield className="h-3 w-3" />Painel ADM</Button></Link>)}
              {isInstallable && (<Button variant="outline" size="sm" onClick={handleInstall} className="hidden lg:flex rounded-xl h-8 text-[9px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Download className="h-3 w-3" />Instalar App</Button>)}
-             <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black italic hidden sm:inline-flex">#{currentRound}</Badge>
+             <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black italic hidden sm:inline-flex">#{currentRound || "?"}</Badge>
              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <div className="relative group cursor-pointer transition-transform active:scale-95">
@@ -577,7 +576,7 @@ function HomeContent() {
 
         <div className={cn("absolute inset-0 overflow-y-auto no-scrollbar pt-4 pb-24 md:pb-8 animate-in fade-in duration-200", activeTab !== "palpites" && "hidden")}>
           <div className="max-w-7xl mx-auto px-4 space-y-6">
-            <div className="flex flex-col"><h3 className="font-black italic uppercase text-lg text-primary">{roundName}</h3><p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Comparativo em tempo real</p></div>
+            <div className="flex flex-col"><h3 className="font-black italic uppercase text-lg text-primary">{roundName || "Aguardando rodada..."}</h3><p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Comparativo em tempo real</p></div>
             <BettingTable roundName={roundName} matches={matches} predictions={predictions} setPrediction={updatePrediction} results={results} placaresOcultos={isEffectivelyHidden} currentPlayerId={user?.uid || ""} isAdmin={isAdminUser} allUsers={allUsers || []} isLocked={isLocked} />
           </div>
         </div>
