@@ -67,7 +67,6 @@ export const syncBrasileiraoData = onSchedule({
       new Date(a.strTimestamp).getTime() - new Date(b.strTimestamp).getTime()
     );
 
-    // Lógica de "Janela de Semana": Busca a rodada que concentra mais jogos nos próximos 7 dias
     const windowStart = now - 24 * 60 * 60 * 1000;
     const windowEnd = now + 6 * 24 * 60 * 60 * 1000;
     const roundVotes: Record<number, number> = {};
@@ -89,7 +88,6 @@ export const syncBrasileiraoData = onSchedule({
       }
     });
 
-    // Fallback: Se não houver jogos na janela, pega a rodada do primeiro jogo futuro
     if (maxVotes === 0) {
       const upcoming = sortedEvents.find((e: any) => new Date(e.strTimestamp).getTime() > now);
       currentMatchday = upcoming ? parseInt(upcoming.intRound) : parseInt(sortedEvents[sortedEvents.length - 1].intRound);
@@ -122,7 +120,6 @@ export const syncBrasileiraoData = onSchedule({
     const roundDoc = await roundRef.get();
     const existingData = roundDoc.exists ? roundDoc.data() : null;
 
-    // Detectar se é uma nova rodada para enviar notificação
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     const lastNotifiedRound = settingsDoc.data()?.lastNotifiedRound || 0;
@@ -134,8 +131,6 @@ export const syncBrasileiraoData = onSchedule({
         const data = doc.data();
         if (data.fcmTokens) tokens.push(...data.fcmTokens);
       });
-
-      console.log(`syncBrasileiraoData: Detectada nova rodada ${currentMatchday}. Enviando para ${tokens.length} tokens.`);
 
       if (tokens.length > 0) {
         const message = {
@@ -150,7 +145,6 @@ export const syncBrasileiraoData = onSchedule({
         try {
           await admin.messaging().sendEachForMulticast(message);
           await settingsRef.set({ lastNotifiedRound: currentMatchday }, { merge: true });
-          console.log(`syncBrasileiraoData: Notificações enviadas com sucesso.`);
         } catch (err) {
           console.error(`syncBrasileiraoData: Erro ao enviar notificações:`, err);
         }
@@ -170,7 +164,6 @@ export const syncBrasileiraoData = onSchedule({
     if (isScoresHidden && !autoRevealProcessed && Number.isFinite(firstMatchTime) && now >= firstMatchTime) {
       isScoresHidden = false;
       autoRevealProcessed = true;
-      console.log(`syncBrasileiraoData: Revelando placares da rodada ${currentMatchday} automaticamente.`);
     }
 
     let finalMatches = apiMatches;
@@ -253,7 +246,16 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
     });
 
     const maxPts = Math.max(...Object.values(pointsMap), 0);
-    const winnerNames = users.filter(u => pointsMap[u.id] === maxPts && maxPts > 0).map(u => u.username || u.id).join(", ");
+    let finalWinners: any[] = [];
+    
+    if (maxPts > 0) {
+      const playersWithMaxPts = users.filter(u => pointsMap[u.id] === maxPts);
+      // Critério de Desempate: Mais Placares Exatos
+      const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0));
+      finalWinners = playersWithMaxPts.filter(u => (exactScoresMap[u.id] || 0) === maxExs);
+    }
+
+    const winnerNames = finalWinners.map(u => u.username || u.id).join(", ");
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     let history = settingsDoc.exists ? settingsDoc.data()?.history : null;

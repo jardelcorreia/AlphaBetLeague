@@ -48,7 +48,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
     const processedRounds = new Set<number>();
     
-    // Processamos o histórico consolidado
+    // 1. Processamos o histórico consolidado vindo do banco
     roundWinners.forEach((rw) => {
       if (!rw.round || processedRounds.has(rw.round)) return;
       
@@ -57,7 +57,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
       processedRounds.add(rw.round);
 
-      // Agregar Pontos e Exatos
+      // Agregar Pontos e Exatos Totais
       ptsEntries.forEach(([key, pts]) => {
         let playerStat = stats[key];
         if (!playerStat) {
@@ -70,10 +70,20 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
         }
       });
 
-      // Lógica de Vencedores e Saldo
+      // Lógica de Vencedores e Saldo Financeiro
       const maxPts = Math.max(...ptsEntries.map(([_, p]) => Number(p)));
       if (maxPts > 0) {
-        const winnerKeys = ptsEntries.filter(([_, p]) => Number(p) === maxPts).map(([key, _]) => key);
+        const potentialWinners = ptsEntries.filter(([_, p]) => Number(p) === maxPts).map(([key, _]) => key);
+        
+        // Critério de Desempate: Placares Exatos na rodada
+        const winnersExsMap: Record<string, number> = {};
+        potentialWinners.forEach(key => {
+          winnersExsMap[key] = Number(rw.exactScoresMap?.[key]) || 0;
+        });
+        
+        const maxExsInRound = Math.max(...Object.values(winnersExsMap));
+        const winnerKeys = potentialWinners.filter(key => winnersExsMap[key] === maxExsInRound);
+        
         const roundValue = rw.value || 0;
         const numPlayers = uniqueUsers.length;
 
@@ -104,7 +114,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       }
     });
 
-    // Adicionamos os dados da rodada atual se ela ainda não estiver consolidada no histórico
+    // 2. Adicionamos os dados da rodada atual (em tempo real) se ela ainda não estiver consolidada
     if (currentRoundScores && currentRoundNumber && !processedRounds.has(currentRoundNumber)) {
       currentRoundScores.forEach(s => {
         if (stats[s.id]) {
@@ -116,7 +126,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
     const hasAnyActivity = Object.values(stats).some(s => s.wins > 0 || s.draws > 0 || s.points > 0 || s.balance !== 0);
 
-    // Critério de Ordenação: Vitórias -> Empates -> Pontos -> Exatos -> Saldo
+    // Critério de Ordenação Oficial: Vitórias -> Empates -> Pontos -> Exatos -> Saldo
     return Object.values(stats).sort((a, b) => {
       if (!hasAnyActivity) return a.name.localeCompare(b.name);
       if (b.wins !== a.wins) return b.wins - a.wins;
@@ -135,7 +145,14 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
     const hasData = ptsEntries.length > 0 && maxPts > 0;
 
     if (hasData) {
-      const winnerKeys = ptsEntries.filter(([_, p]) => Number(p) === maxPts).map(([key, _]) => key);
+      const potentialWinners = ptsEntries.filter(([_, p]) => Number(p) === maxPts).map(([key, _]) => key);
+      const winnersExsMap: Record<string, number> = {};
+      potentialWinners.forEach(key => {
+        winnersExsMap[key] = Number(rw.exactScoresMap?.[key]) || 0;
+      });
+      const maxExs = Math.max(...Object.values(winnersExsMap));
+      const winnerKeys = potentialWinners.filter(key => winnersExsMap[key] === maxExs);
+      
       displayWinners = winnerKeys.map(key => userMap[key]?.username || key).join(", ");
     }
 

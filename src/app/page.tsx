@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
@@ -128,43 +129,37 @@ function HomeContent() {
     return currentUserFirestore?.isAdmin === true;
   }, [currentUserFirestore]);
 
-  // Lógica de Fusão de Dados (API + Firestore Overrides)
   const matches = useMemo(() => {
+    // Fusão Híbrida: Prioridade para a API para placares Ao Vivo, mas respeita overrides manuais
     let baseData = [...rawMatches];
     
-    // Se ainda não temos dados da API, usamos os do Firestore como fallback
-    if (baseData.length === 0 && roundData?.matches && Array.isArray(roundData.matches)) {
+    if (baseData.length === 0 && roundData?.matches) {
       baseData = roundData.matches;
     }
 
     if (baseData.length === 0) return [];
 
-    // Mesclamos os dados: Prioridade para overrides manuais do Administrador
     let merged = baseData.map(m => {
-      if (roundData?.matches && Array.isArray(roundData.matches)) {
-        const override = roundData.matches.find((o: any) => o && o.id === m.id);
-        if (override && override.isManual === true) {
-          return {
-            ...m,
-            homeScore: (override.homeScore !== undefined && override.homeScore !== null) ? override.homeScore : m.homeScore,
-            awayScore: (override.awayScore !== undefined && override.awayScore !== null) ? override.awayScore : m.awayScore,
-            status: override.status || m.status,
-            isManual: true
-          };
-        }
+      const override = roundData?.matches?.find((o: any) => o && o.id === m.id);
+      if (override && override.isManual === true) {
+        return {
+          ...m,
+          homeScore: (override.homeScore !== undefined && override.homeScore !== null) ? override.homeScore : m.homeScore,
+          awayScore: (override.awayScore !== undefined && override.awayScore !== null) ? override.awayScore : m.awayScore,
+          status: override.status || m.status,
+          isManual: true
+        };
       }
       return m;
     });
 
-    // Validamos datas e janela
     let data = determineMatchValidity(merged);
     let finalMatches = data.map((m, i) => ({ ...m, originalIndex: i }));
 
-    // Ordenação Mobile (Jogos ao vivo no topo)
     if (isMobile) {
       finalMatches.sort((a, b) => {
-        const aLive = a.status === 'live';
-        const bLive = b.status === 'live';
+        const aLive = a.status.toLowerCase() === 'live';
+        const bLive = b.status.toLowerCase() === 'live';
         if (aLive && !bLive) return -1;
         if (!aLive && bLive) return 1;
         return (a.originalIndex ?? 0) - (b.originalIndex ?? 0);
@@ -182,7 +177,7 @@ function HomeContent() {
   const results = useMemo((): Prediction[] => {
     return matches.slice(0, 10).map(m => {
       const hasScore = m.homeScore !== undefined && m.homeScore !== null && m.awayScore !== undefined && m.awayScore !== null;
-      const isActive = m.status === 'finished' || m.status === 'live';
+      const isActive = m.status.toLowerCase() === 'finished' || m.status.toLowerCase() === 'live';
       return {
         homeScore: (isActive && hasScore) ? m.homeScore!.toString() : "",
         awayScore: (isActive && hasScore) ? m.awayScore!.toString() : "",
@@ -260,12 +255,14 @@ function HomeContent() {
 
   const isRoundFinished = useMemo(() => {
     if (matches.length === 0 || loadingMatches) return false;
-    return matches.every(m => m.status === 'finished' || m.status === 'cancelled' || m.isValidForPoints === false);
+    const validMatches = matches.slice(0, 10).filter(m => m.isValidForPoints !== false && m.status.toLowerCase() !== 'cancelled');
+    if (validMatches.length === 0) return false;
+    return validMatches.every(m => m.status.toLowerCase() === 'finished');
   }, [matches, loadingMatches]);
 
   const totalValidMatchesCount = useMemo(() => {
     if (matches.length === 0) return 10;
-    return matches.slice(0, 10).filter(m => m.isValidForPoints !== false && m.status !== 'cancelled').length;
+    return matches.slice(0, 10).filter(m => m.isValidForPoints !== false && m.status.toLowerCase() !== 'cancelled').length;
   }, [matches]);
 
   const scores = useMemo((): PlayerScore[] => {
@@ -280,7 +277,7 @@ function HomeContent() {
     const sortedOrig = [...matches].sort((a, b) => (a.originalIndex ?? 0) - (b.originalIndex ?? 0));
     const origResults = sortedOrig.slice(0, 10).map(m => {
       const hasScore = m.homeScore !== undefined && m.homeScore !== null && m.awayScore !== undefined && m.awayScore !== null;
-      const isActive = m.status === 'finished' || m.status === 'live';
+      const isActive = m.status.toLowerCase() === 'finished' || m.status.toLowerCase() === 'live';
       return {
         homeScore: (isActive && hasScore) ? m.homeScore!.toString() : "",
         awayScore: (isActive && hasScore) ? m.awayScore!.toString() : "",
@@ -291,8 +288,8 @@ function HomeContent() {
     const unfinishedMatchesCount = activeIndices.filter(idx => {
       const res = origResults[idx];
       const match = sortedOrig[idx];
-      const isMatchValid = match?.isValidForPoints !== false && match?.status !== 'cancelled';
-      const isFinished = match?.status === 'finished';
+      const isMatchValid = match?.isValidForPoints !== false && match?.status.toLowerCase() !== 'cancelled';
+      const isFinished = match?.status.toLowerCase() === 'finished';
       return isMatchValid && !isFinished && (res?.homeScore === "" || res?.awayScore === "");
     }).length;
 
@@ -306,7 +303,7 @@ function HomeContent() {
         const hasRes = res?.homeScore !== "" && res?.awayScore !== "";
         const hasPred = pred?.homeScore !== "" && pred?.awayScore !== "";
         const match = sortedOrig[idx];
-        const isMatchValid = match?.isValidForPoints !== false && match?.status !== 'cancelled';
+        const isMatchValid = match?.isValidForPoints !== false && match?.status.toLowerCase() !== 'cancelled';
         if (isMatchValid && hasPred) filledValidCount++;
         if (hasRes && hasPred && isMatchValid) {
           const rh = parseInt(res.homeScore), ra = parseInt(res.awayScore);
@@ -319,7 +316,11 @@ function HomeContent() {
     });
 
     const hasAnyActivity = playerStats.some(s => s.points > 0);
-    const sorted = hasAnyActivity ? [...playerStats].sort((a, b) => b.points - a.points || b.exactScores - a.exactScores || (a.name || "").localeCompare(b.name || "")) : [...playerStats].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    // Ordenação com Desempate por Exatos para definir o vencedor local
+    const sorted = hasAnyActivity 
+      ? [...playerStats].sort((a, b) => b.points - a.points || b.exactScores - a.exactScores || (a.name || "").localeCompare(b.name || "")) 
+      : [...playerStats].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      
     const finalScoresWithWinner = sorted.map(p => ({ ...p, isWinner: false }));
     const leader = sorted[0];
     const runnerUp = sorted[1];
