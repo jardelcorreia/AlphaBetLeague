@@ -19,9 +19,10 @@ interface ChampionshipRankingProps {
   isSaving?: boolean;
   currentRoundScores?: PlayerScore[];
   currentRoundNumber?: number | null;
+  isRoundFinished?: boolean;
 }
 
-export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores, currentRoundNumber }: ChampionshipRankingProps) {
+export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores, currentRoundNumber, isRoundFinished }: ChampionshipRankingProps) {
   const userMap = useMemo(() => {
     const map: Record<string, any> = {};
     const uniqueUsersMap = new Map();
@@ -61,7 +62,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       ptsEntries.forEach(([key, pts]) => {
         let playerStat = stats[key];
         if (!playerStat) {
-          playerStat = Object.values(stats).find(s => s.name === key);
+          playerStat = Object.values(stats).find(s => s.id === key || s.name === key);
         }
 
         if (playerStat) {
@@ -84,12 +85,12 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
         const maxExsInRound = Math.max(...Object.values(winnersExsMap));
         const winnerKeys = potentialWinners.filter(key => winnersExsMap[key] === maxExsInRound);
         
-        const roundValue = rw.value || 0;
+        const roundValue = rw.value || 6;
         const numPlayers = uniqueUsers.length;
 
         const winnerIds = winnerKeys.map(key => {
           if (stats[key]) return key;
-          return Object.values(stats).find(s => s.name === key)?.id;
+          return Object.values(stats).find(s => s.id === key || s.name === key)?.id;
         }).filter(id => !!id) as string[];
 
         if (winnerIds.length === 1) {
@@ -114,7 +115,8 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       }
     });
 
-    // 2. Adicionamos os dados da rodada atual (em tempo real) se ela ainda não estiver consolidada
+    // 2. Adicionamos os dados da rodada atual (em tempo real)
+    // Se a rodada estiver encerrada, creditamos proativamente a vitória e saldo
     if (currentRoundScores && currentRoundNumber && !processedRounds.has(currentRoundNumber)) {
       currentRoundScores.forEach(s => {
         if (stats[s.id]) {
@@ -122,11 +124,43 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
           stats[s.id].exactScores += s.exactScores;
         }
       });
+
+      if (isRoundFinished) {
+        const maxPts = Math.max(...currentRoundScores.map(s => s.points));
+        if (maxPts > 0) {
+          const topPlayers = currentRoundScores.filter(s => s.points === maxPts);
+          const maxExs = Math.max(...topPlayers.map(s => s.exactScores));
+          const winners = topPlayers.filter(s => s.exactScores === maxExs);
+          
+          const roundValue = roundWinners.find(rw => rw.round === currentRoundNumber)?.value || 6;
+          const numPlayers = uniqueUsers.length;
+
+          if (winners.length === 1) {
+            const winnerId = winners[0].id;
+            if (stats[winnerId]) {
+              stats[winnerId].wins += 1;
+              stats[winnerId].balance += roundValue * (numPlayers - 1);
+            }
+            uniqueUsers.forEach(u => {
+              if (u.id !== winnerId && stats[u.id]) {
+                stats[u.id].balance -= roundValue;
+              }
+            });
+          } else if (winners.length > 1) {
+            winners.forEach(w => { if (stats[w.id]) stats[w.id].draws += 1; });
+            const winnerIds = winners.map(w => w.id);
+            const losers = uniqueUsers.filter(u => !winnerIds.includes(u.id));
+            const totalPot = losers.length * roundValue;
+            const prizePerWinner = totalPot / winners.length;
+            winnerIds.forEach(wId => { if (stats[wId]) stats[wId].balance += prizePerWinner; });
+            losers.forEach(l => { if (stats[l.id]) stats[l.id].balance -= roundValue; });
+          }
+        }
+      }
     }
 
     const hasAnyActivity = Object.values(stats).some(s => s.wins > 0 || s.draws > 0 || s.points > 0 || s.balance !== 0);
 
-    // Critério de Ordenação Oficial: Vitórias -> Empates -> Pontos -> Exatos -> Saldo
     return Object.values(stats).sort((a, b) => {
       if (!hasAnyActivity) return a.name.localeCompare(b.name);
       if (b.wins !== a.wins) return b.wins - a.wins;
@@ -136,7 +170,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       if (b.balance !== a.balance) return b.balance - a.balance;
       return a.name.localeCompare(b.name);
     });
-  }, [roundWinners, allUsers, currentRoundScores, currentRoundNumber]);
+  }, [roundWinners, allUsers, currentRoundScores, currentRoundNumber, isRoundFinished]);
 
   const renderRoundItem = (rw: ChampionshipWinner, idx: number) => {
     let displayWinners = rw.winners || "";
@@ -187,7 +221,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
         <div className="flex flex-col items-end shrink-0 ml-3">
           <span className="text-[8px] font-black uppercase text-muted-foreground/60 tracking-widest">Aposta</span>
           <div className="flex items-center gap-1">
-            <span className="text-[10px] font-black text-primary/60 italic">R$ {(rw.value || 0).toFixed(2)}</span>
+            <span className="text-[10px] font-black text-primary/60 italic">R$ {(rw.value || 6).toFixed(2)}</span>
           </div>
         </div>
       </div>
