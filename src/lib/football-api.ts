@@ -1,4 +1,3 @@
-
 'use server';
 
 import { Match, StandingEntry, MatchStatus } from './types';
@@ -10,7 +9,10 @@ const BASE_URL = 'https://api.football-data.org/v4';
  * Busca a rodada atual do Brasileirão (BSA).
  */
 export async function getBrasileiraoCurrentMatchday(): Promise<number> {
-  if (!API_KEY) return 1;
+  if (!API_KEY) {
+    console.warn('getBrasileiraoCurrentMatchday: FOOTBALL_DATA_API_KEY não configurada nas variáveis de ambiente.');
+    return 1;
+  }
 
   try {
     const response = await fetch(`${BASE_URL}/competitions/BSA`, {
@@ -36,7 +38,7 @@ export async function getBrasileiraoCurrentMatchday(): Promise<number> {
  */
 export async function getBrasileiraoMatches(matchday: number): Promise<Match[]> {
   if (!API_KEY) {
-    console.error('API Key do Football-Data não configurada.');
+    console.error('getBrasileiraoMatches: FOOTBALL_DATA_API_KEY não configurada nas variáveis de ambiente.');
     return [];
   }
 
@@ -93,7 +95,10 @@ export async function getBrasileiraoMatches(matchday: number): Promise<Match[]> 
  * Busca a tabela de classificação do Brasileirão (BSA).
  */
 export async function getLeagueStandings(): Promise<StandingEntry[]> {
-  if (!API_KEY) return [];
+  if (!API_KEY) {
+    console.warn('getLeagueStandings: FOOTBALL_DATA_API_KEY não configurada nas variáveis de ambiente.');
+    return [];
+  }
 
   try {
     const response = await fetch(`${BASE_URL}/competitions/BSA/standings`, {
