@@ -37,6 +37,7 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="theme-color" content="#050810" />
       </head>
       <body className="font-body antialiased bg-background min-h-screen flex flex-col" suppressHydrationWarning>
         <FirebaseClientProvider>

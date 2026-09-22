@@ -77,7 +77,7 @@ function HomeContent() {
   const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState<TabType>("jogos");
-  const [darkMode, setDarkMode] = useState(true); // Default dark for premium feel
+  const [darkMode, setDarkMode] = useState(true);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [currentRound, setCurrentRound] = useState<number | null>(null);
   const [systemCurrentRound, setSystemCurrentRound] = useState<number | null>(null);
@@ -105,7 +105,6 @@ function HomeContent() {
   );
 
   const roundId = currentRound ? `round_${currentRound}` : null;
-
   const roundDocRef = useMemoFirebase(() => (roundId && user) ? doc(db, "rounds", roundId) : null, [db, roundId, user]);
   const { data: roundData, isLoading: isLoadingRound } = useDoc(roundDocRef);
 
@@ -132,12 +131,7 @@ function HomeContent() {
   const matches = useMemo(() => {
     let baseData = [...rawMatches];
     
-    if (baseData.length === 0 && roundData?.matches) {
-      baseData = roundData.matches;
-    }
-
-    if (baseData.length === 0) return [];
-
+    // Mesclagem Híbrida: API + Overrides do Firestore
     let merged = baseData.map(m => {
       const override = roundData?.matches?.find((o: any) => o && o.id === m.id);
       if (override && override.isManual === true) {
@@ -145,12 +139,17 @@ function HomeContent() {
           ...m,
           homeScore: (override.homeScore !== undefined && override.homeScore !== null) ? override.homeScore : m.homeScore,
           awayScore: (override.awayScore !== undefined && override.awayScore !== null) ? override.awayScore : m.awayScore,
-          status: (override.status || m.status).toLowerCase(),
+          status: (override.status || m.status).toLowerCase() as any,
           isManual: true
         };
       }
-      return { ...m, status: (m.status || 'upcoming').toLowerCase() };
+      return { ...m, status: (m.status || 'upcoming').toLowerCase() as any };
     });
+
+    // Fallback: se a API não retornou nada mas o Firestore tem dados, usa o Firestore
+    if (merged.length === 0 && roundData?.matches) {
+      merged = roundData.matches.map((m: any) => ({ ...m, status: (m.status || 'upcoming').toLowerCase() }));
+    }
 
     let data = determineMatchValidity(merged);
     let finalMatches = data.map((m, i) => ({ ...m, originalIndex: i }));
@@ -193,11 +192,7 @@ function HomeContent() {
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
-    if (savedTheme) {
-      setDarkMode(savedTheme === "dark");
-    } else {
-      setDarkMode(true);
-    }
+    setDarkMode(savedTheme ? savedTheme === "dark" : true);
   }, []);
 
   useEffect(() => {
@@ -217,40 +212,13 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    if (!showProfileDialog) {
-      const cleanupBody = () => {
-        document.body.style.pointerEvents = "auto";
-        document.body.style.overflow = "auto";
-      };
-      cleanupBody();
-      const timer = setTimeout(cleanupBody, 300);
-      return () => { clearTimeout(timer); };
-    }
-  }, [showProfileDialog]);
-
-  useEffect(() => {
     setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (initialPermissionRef.current !== 'granted' && permission === 'granted' && !isAdminUser) {
-      setShowNotificationSuccess(true);
-      const timer = setTimeout(() => {
-        setShowNotificationSuccess(false);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [permission, isAdminUser]);
-
-  const isEffectivelyHidden = useMemo(() => {
-    return placaresOcultos;
-  }, [placaresOcultos]);
-
-  const isLocked = useMemo(() => {
-    return !placaresOcultos;
-  }, [placaresOcultos]);
+  const isEffectivelyHidden = useMemo(() => placaresOcultos, [placaresOcultos]);
+  const isLocked = useMemo(() => !placaresOcultos, [placaresOcultos]);
 
   const isRoundFinished = useMemo(() => {
     if (matches.length === 0 || loadingMatches) return false;
@@ -348,9 +316,7 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    if (settingsData?.history && Array.isArray(settingsData.history)) {
-      setRoundWinners(settingsData.history);
-    }
+    if (settingsData?.history) setRoundWinners(settingsData.history);
   }, [settingsData]);
 
   useEffect(() => {
@@ -364,14 +330,10 @@ function HomeContent() {
 
   useEffect(() => {
     if (currentRound === null) return;
-    
     async function loadOfficialData() {
       setLoadingMatches(true);
       try {
-        const [raw, leagueTable] = await Promise.all([
-          getBrasileiraoMatches(currentRound!),
-          getLeagueStandings()
-        ]);
+        const [raw, leagueTable] = await Promise.all([getBrasileiraoMatches(currentRound!), getLeagueStandings()]);
         setRawMatches(raw || []);
         setStandings(leagueTable || []);
       } catch (error) {
@@ -380,7 +342,6 @@ function HomeContent() {
         setLoadingMatches(false);
       }
     }
-
     loadOfficialData();
     const interval = setInterval(loadOfficialData, 60000);
     return () => clearInterval(interval);
@@ -411,7 +372,6 @@ function HomeContent() {
       if (myPreds) {
         const currentUsername = currentUserFirestore?.username || user.displayName || "Jogador";
         const sortedOrig = [...matches].sort((a, b) => (a.originalIndex ?? 0) - (b.originalIndex ?? 0));
-        
         myPreds.forEach((pred, idx) => {
           const betId = `${user.uid}_${idx}`;
           const betRef = doc(db, "rounds", roundId, "bets", betId);
@@ -419,9 +379,7 @@ function HomeContent() {
             deleteDocumentNonBlocking(betRef);
           } else if (pred.homeScore !== "" || pred.awayScore !== "") {
             setDocumentNonBlocking(betRef, {
-              id: betId,
-              userId: user.uid,
-              username: currentUsername,
+              id: betId, userId: user.uid, username: currentUsername,
               matchId: sortedOrig[idx]?.id || idx,
               homeScorePrediction: pred.homeScore !== "" ? parseInt(pred.homeScore) : null,
               awayScorePrediction: pred.awayScore !== "" ? parseInt(pred.awayScore) : null,
@@ -430,7 +388,7 @@ function HomeContent() {
           }
         });
       }
-      toast({ title: "Quila Confirmada!", description: "Seus palpites foram registrados com sucesso." });
+      toast({ title: "Quila Confirmada!", description: "Seus palpites foram registrados." });
     } catch (error) {
       toast({ variant: "destructive", title: "Erro", description: "Falha na sincronização." });
     } finally { setIsSaving(false); }
@@ -440,34 +398,27 @@ function HomeContent() {
 
   const updatePrediction = (userId: string, idx: number, type: 'home' | 'away', value: string) => {
     if (userId !== user?.uid || isLocked) return;
-    
     setPredictions(prev => {
       const userPreds = prev[userId] || Array(10).fill({ homeScore: "", awayScore: "" });
       const newPreds = userPreds.map((p, i) => i === idx ? { ...p, [type === 'home' ? 'homeScore' : 'awayScore']: value } : p);
-      
       if (roundId && user) {
         const betId = `${user.uid}_${idx}`;
         const betRef = doc(db, "rounds", roundId, "bets", betId);
         const updatedPred = newPreds[idx];
         const currentUsername = currentUserFirestore?.username || user.displayName || "Jogador";
         const sortedOrig = [...matches].sort((a, b) => (a.originalIndex ?? 0) - (b.originalIndex ?? 0));
-        const matchId = sortedOrig[idx]?.id || idx;
-
         if (updatedPred.homeScore === "" && updatedPred.awayScore === "") {
           deleteDocumentNonBlocking(betRef);
         } else if (updatedPred.homeScore !== "" || updatedPred.awayScore !== "") {
           setDocumentNonBlocking(betRef, {
-            id: betId,
-            userId: user.uid,
-            username: currentUsername,
-            matchId: matchId,
+            id: betId, userId: user.uid, username: currentUsername,
+            matchId: sortedOrig[idx]?.id || idx,
             homeScorePrediction: updatedPred.homeScore !== "" ? parseInt(updatedPred.homeScore) : null,
             awayScorePrediction: updatedPred.awayScore !== "" ? parseInt(updatedPred.awayScore) : null,
             dateSubmitted: serverTimestamp()
           }, { merge: true });
         }
       }
-      
       return { ...prev, [userId]: newPreds };
     });
   };
@@ -480,14 +431,12 @@ function HomeContent() {
       <header className="shrink-0 glass-card border-none rounded-none shadow-md z-50">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <Logo showText />
-          
           <div className="hidden md:flex items-center bg-muted/30 rounded-2xl p-1 gap-1 border border-primary/5">
             <button onClick={() => setActiveTab("jogos")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "jogos" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Calendar className="h-4 w-4" />QUILA/JOGOS</button>
             <button onClick={() => setActiveTab("palpites")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "palpites" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Radar className="h-4 w-4" />Palpites</button>
             <button onClick={() => setActiveTab("ranking")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "ranking" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Trophy className="h-4 w-4" />Ranking</button>
             <button onClick={() => setActiveTab("tabela")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "tabela" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><LayoutDashboard className="h-4 w-4" />Tabela</button>
           </div>
-          
           <div className="flex items-center gap-2 md:gap-3">
              {isAdminUser && (<Link href="/admin"><Button variant="outline" size="sm" className="rounded-xl h-9 text-[11px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Shield className="h-4 w-4" />Painel ADM</Button></Link>)}
              <Badge className="bg-primary/10 text-primary border-none text-[11px] font-black italic hidden sm:inline-flex px-3 h-7">#{currentRound || "?"}</Badge>
@@ -497,7 +446,7 @@ function HomeContent() {
                     <div className="h-10 w-10 bg-primary/5 rounded-xl flex items-center justify-center p-[2px] border border-primary/10 shadow-sm">
                       <Avatar className="h-full w-full rounded-lg border border-background shadow-md overflow-hidden bg-muted flex items-center justify-center">
                         <AvatarImage src={currentUserFirestore?.photoUrl || user.photoURL || undefined} className="object-cover" />
-                        <AvatarFallback className="bg-primary/10 text-primary font-black text-xs">{currentUserFirestore?.username ? currentUserFirestore.username.substring(0,2).toUpperCase() : user.displayName ? user.displayName.substring(0,2).toUpperCase() : "AL"}</AvatarFallback>
+                        <AvatarFallback className="bg-primary/10 text-primary font-black text-xs">{currentUserFirestore?.username ? currentUserFirestore.username.substring(0,2).toUpperCase() : "AL"}</AvatarFallback>
                       </Avatar>
                     </div>
                   </div>
@@ -506,7 +455,6 @@ function HomeContent() {
                   <DropdownMenuLabel className="font-black italic uppercase text-xs text-muted-foreground tracking-widest px-3 py-2">Minha Conta</DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-primary/5" />
                   <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setShowProfileDialog(true); }} className="rounded-xl gap-2 font-bold cursor-pointer py-3 focus:bg-primary/10"><UserCircle className="h-4 w-4 text-primary" />Editar Perfil</DropdownMenuItem>
-                  {isAdminUser && (<Link href="/admin"><DropdownMenuItem className="rounded-xl gap-2 font-bold cursor-pointer py-3 focus:bg-primary/10"><Settings className="h-4 w-4 text-primary" />Área Administrativa</DropdownMenuItem></Link>)}
                   {isInstallable && (<DropdownMenuItem onClick={handleInstall} className="rounded-xl gap-2 font-bold cursor-pointer py-3 focus:bg-primary/10 md:hidden"><Smartphone className="h-4 w-4 text-primary" />Instalar no Celular</DropdownMenuItem>)}
                   <DropdownMenuItem onClick={() => setDarkMode(!darkMode)} className="rounded-xl gap-2 font-bold cursor-pointer py-3 focus:bg-primary/10">{darkMode ? <Sun className="h-4 w-4 text-accent" /> : <Moon className="h-4 w-4 text-primary" />}Tema {darkMode ? 'Claro' : 'Escuro'}</DropdownMenuItem>
                   <DropdownMenuSeparator className="bg-primary/5" />
@@ -519,100 +467,67 @@ function HomeContent() {
 
       <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
         <DialogContent className="max-w-2xl p-0 border-none bg-background shadow-2xl focus:outline-none z-[70] overflow-hidden rounded-3xl">
-          <DialogHeader className="sr-only"><DialogTitle>Configurações de Perfil</DialogTitle><DialogDescription>Personalize seu perfil na AlphaBet League.</DialogDescription></DialogHeader>
+          <DialogHeader className="sr-only"><DialogTitle>Configurações de Perfil</DialogTitle><DialogDescription>Personalize seu perfil.</DialogDescription></DialogHeader>
           <div className="max-h-[90vh] overflow-y-auto"><ProfileSettings /></div>
         </DialogContent>
       </Dialog>
 
       <main className="flex-1 relative overflow-hidden">
         <div className={cn("absolute inset-0 overflow-y-auto no-scrollbar pt-1 pb-24 md:pb-8 animate-in fade-in duration-200", activeTab !== "jogos" && "hidden")}>
-          <div className="max-w-7xl mx-auto px-4 space-y-4 md:space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+          <div className="max-w-7xl mx-auto px-4 space-y-4 md:space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
               {isInstallable && (
-                <div className="glass-card border-none rounded-[2rem] p-6 flex flex-col sm:flex-row items-center justify-between gap-6 overflow-hidden relative group">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Smartphone className="h-16 w-16 text-primary" /></div>
-                  <div className="flex items-center gap-4 relative z-10 text-center sm:text-left"><div className="h-12 w-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0"><Smartphone className="h-6 w-6 text-primary" /></div><div><h4 className="text-base font-black italic uppercase text-primary leading-tight">Instale o App</h4><p className="text-xs font-medium text-muted-foreground">Acesso rápido na tela inicial.</p></div></div>
-                  <Button onClick={handleInstall} size="sm" className="rounded-xl h-11 px-6 font-black italic uppercase gap-2 shadow-lg shadow-primary/20 relative z-10 w-full sm:w-auto"><Download className="h-5 w-5" />Instalar</Button>
+                <div className="glass-card border-none rounded-2xl p-4 flex items-center justify-between gap-4 overflow-hidden relative group">
+                  <div className="flex items-center gap-3 relative z-10"><div className="h-10 w-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0"><Smartphone className="h-5 w-5 text-primary" /></div><div><h4 className="text-sm font-black italic uppercase text-primary leading-tight">Instale o App</h4><p className="text-[10px] font-medium text-muted-foreground">Acesso rápido na tela inicial.</p></div></div>
+                  <Button onClick={handleInstall} size="sm" className="rounded-xl h-9 px-4 font-black italic uppercase gap-2 text-[10px] shadow-lg shadow-primary/20 relative z-10">Instalar</Button>
                 </div>
               )}
               {isFcmSupported && permission === 'default' && (
-                <div className="glass-card border-none rounded-[2rem] p-6 flex flex-col sm:flex-row items-center justify-between gap-6 overflow-hidden relative group">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><BellRing className="h-16 w-16 text-accent" /></div>
-                  <div className="flex items-center gap-4 relative z-10 text-center sm:text-left"><div className="h-12 w-12 bg-accent/10 rounded-xl flex items-center justify-center shrink-0"><Bell className="h-6 w-6 text-accent" /></div><div><h4 className="text-base font-black italic uppercase text-accent leading-tight">Ative Lembretes</h4><p className="text-xs font-medium text-muted-foreground">Não perca o prazo de palpitar na rodada.</p></div></div>
-                  <Button onClick={requestPermission} size="sm" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-xl h-11 px-6 font-black italic uppercase gap-2 shadow-lg shadow-accent/20 relative z-10 w-full sm:w-auto"><BellRing className="h-5 w-5" />Ativar</Button>
+                <div className="glass-card border-none rounded-2xl p-4 flex items-center justify-between gap-4 overflow-hidden relative group">
+                  <div className="flex items-center gap-3 relative z-10"><div className="h-10 w-10 bg-accent/10 rounded-xl flex items-center justify-center shrink-0"><Bell className="h-5 w-5 text-accent" /></div><div><h4 className="text-sm font-black italic uppercase text-accent leading-tight">Ative Lembretes</h4><p className="text-[10px] font-medium text-muted-foreground">Não perca o prazo de quila.</p></div></div>
+                  <Button onClick={requestPermission} size="sm" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-xl h-9 px-4 font-black italic uppercase gap-2 text-[10px] shadow-lg shadow-accent/20 relative z-10">Ativar</Button>
                 </div>
               )}
-              {showNotificationSuccess && (
-                <div className="glass-card border-none rounded-[2rem] p-6 flex items-center gap-4 overflow-hidden relative group bg-secondary/5 animate-in fade-in slide-in-from-top-4 duration-500"><div className="h-10 w-10 bg-secondary/10 rounded-xl flex items-center justify-center shrink-0"><CheckCircle2 className="h-6 w-6 text-secondary" /></div><div><h4 className="text-xs font-black italic uppercase text-secondary">Notificações Ativas</h4><p className="text-[10px] font-medium text-muted-foreground">Lembretes de palpites e resultados ativados.</p></div></div>
-              )}
             </div>
-            <section className="space-y-4">
-              <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Medal className="h-6 w-6 text-accent" /><h2 className="text-xl font-black italic uppercase">Pontuação da Rodada</h2></div>{(loadingMatches || isLoadingBets || isLoadingRound) && <RefreshCw className="h-5 w-5 animate-spin text-primary" />}</div>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Medal className="h-5 w-5 text-accent" /><h2 className="text-lg font-black italic uppercase">Pontuação da Rodada</h2></div>{(loadingMatches || isLoadingBets || isLoadingRound) && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}</div>
               <RankingSummary scores={scores} isScoresHidden={isEffectivelyHidden} isRoundFinished={isRoundFinished} totalValidMatches={totalValidMatchesCount} />
             </section>
-            
             <div className="max-w-5xl mx-auto">
               {currentRound !== null ? (
-                <MatchCalendar 
-                  matches={matches} 
-                  round={currentRound} 
-                  systemCurrentRound={systemCurrentRound}
-                  totalRounds={38} 
-                  predictions={predictions[user?.uid || ""] || Array(10).fill({ homeScore: "", awayScore: "" })} 
-                  setPrediction={(idx, type, value) => updatePrediction(user?.uid || "", idx, type, value)} 
-                  updateMatchManual={() => {}} 
-                  isAdmin={false} 
-                  onPrev={() => setCurrentRound(prev => Math.max(1, prev! - 1))} 
-                  onNext={() => setCurrentRound(prev => Math.min(38, prev! + 1))} 
-                  onSave={handleSaveAll} 
-                  isSaving={isSaving} 
-                  isLocked={isLocked} 
-                />
+                <MatchCalendar matches={matches} round={currentRound} systemCurrentRound={systemCurrentRound} totalRounds={38} predictions={predictions[user?.uid || ""] || Array(10).fill({ homeScore: "", awayScore: "" })} setPrediction={(idx, type, value) => updatePrediction(user?.uid || "", idx, type, value)} updateMatchManual={() => {}} isAdmin={false} onPrev={() => setCurrentRound(prev => Math.max(1, prev! - 1))} onNext={() => setCurrentRound(prev => Math.min(38, prev! + 1))} onSave={handleSaveAll} isSaving={isSaving} isLocked={isLocked} />
               ) : (
-                <div className="h-96 flex flex-col items-center justify-center glass-card rounded-[2.5rem] border-dashed border-2 gap-4"><Loader2 className="h-10 w-10 animate-spin text-primary" /><span className="text-base font-black italic uppercase text-muted-foreground">Buscando rodada atual...</span></div>
+                <div className="h-64 flex flex-col items-center justify-center glass-card rounded-2xl border-dashed border-2 gap-4"><Loader2 className="h-8 w-8 animate-spin text-primary" /><span className="text-sm font-black italic uppercase text-muted-foreground">Buscando rodada...</span></div>
               )}
             </div>
           </div>
         </div>
-
         <div className={cn("absolute inset-0 overflow-y-auto no-scrollbar pt-4 pb-24 md:pb-8 animate-in fade-in duration-200", activeTab !== "palpites" && "hidden")}>
-          <div className="max-w-7xl mx-auto px-4 space-y-6">
-            <div className="flex flex-col"><h3 className="font-black italic uppercase text-xl text-primary">{roundName || "Aguardando rodada..."}</h3><p className="text-xs text-muted-foreground font-bold tracking-widest uppercase">Comparativo em tempo real</p></div>
+          <div className="max-w-7xl mx-auto px-4 space-y-4">
+            <div className="flex flex-col"><h3 className="font-black italic uppercase text-lg text-primary">{roundName || "Aguardando..."}</h3><p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Comparativo em tempo real</p></div>
             <BettingTable roundName={roundName} matches={matches} predictions={predictions} setPrediction={updatePrediction} results={results} placaresOcultos={isEffectivelyHidden} currentPlayerId={user?.uid || ""} isAdmin={isAdminUser} allUsers={allUsers || []} isLocked={isLocked} />
           </div>
         </div>
-
         <div className={cn("absolute inset-0 overflow-y-auto no-scrollbar pt-4 pb-24 md:pb-8 animate-in fade-in duration-200", activeTab !== "ranking" && "hidden")}>
-          <div className="max-w-7xl mx-auto px-4 space-y-6">
-            <div className="flex flex-col"><h3 className="font-black italic uppercase text-xl text-primary">Ranking Geral</h3><p className="text-xs text-muted-foreground font-bold tracking-widest uppercase">Classificação do Campeonato</p></div>
-            <ChampionshipRanking 
-              roundWinners={roundWinners} 
-              setRoundWinners={setRoundWinners} 
-              allUsers={allUsers || []} 
-              isAdmin={false} 
-              onSave={async () => {}} 
-              isSaving={false} 
-              currentRoundScores={scores}
-              currentRoundNumber={currentRound}
-              isRoundFinished={isRoundFinished}
-            />
+          <div className="max-w-7xl mx-auto px-4 space-y-4">
+            <div className="flex flex-col"><h3 className="font-black italic uppercase text-lg text-primary">Ranking Geral</h3><p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Classificação do Campeonato</p></div>
+            <ChampionshipRanking roundWinners={roundWinners} setRoundWinners={setRoundWinners} allUsers={allUsers || []} isAdmin={false} onSave={async () => {}} isSaving={false} currentRoundScores={scores} currentRoundNumber={currentRound} isRoundFinished={isRoundFinished} />
           </div>
         </div>
-
         <div className={cn("absolute inset-0 overflow-y-auto no-scrollbar pt-4 pb-24 md:pb-8 animate-in fade-in duration-200", activeTab !== "tabela" && "hidden")}>
-          <div className="max-w-7xl mx-auto px-4 space-y-6">
-            <div className="flex flex-col"><h3 className="font-black italic uppercase text-xl text-primary">Tabela Oficial</h3><p className="text-xs text-muted-foreground font-bold tracking-widest uppercase">Classificação Série A</p></div>
+          <div className="max-w-7xl mx-auto px-4 space-y-4">
+            <div className="flex flex-col"><h3 className="font-black italic uppercase text-lg text-primary">Tabela Oficial</h3><p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Classificação Série A</p></div>
             <LeagueStandings standings={standings} />
           </div>
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 glass-card border-t border-primary/10 rounded-none h-22 px-6 pb-4 md:hidden shrink-0">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 glass-card border-t border-primary/10 rounded-none h-20 px-6 pb-2 md:hidden shrink-0">
         <div className="max-w-md mx-auto h-full flex items-center justify-between">
-          <button onClick={() => setActiveTab("jogos")} className={cn("flex flex-col items-center gap-1.5 transition-all", activeTab === "jogos" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Calendar className={cn("h-7 w-7", activeTab === "jogos" && "fill-current")} /><span className="text-[11px] font-black uppercase italic text-center">QUILA</span></button>
-          <button onClick={() => setActiveTab("palpites")} className={cn("flex flex-col items-center gap-1.5 transition-all", activeTab === "palpites" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Radar className={cn("h-7 w-7", activeTab === "palpites" && "fill-current")} /><span className="text-[11px] font-black uppercase italic text-center">Palpites</span></button>
-          <button onClick={() => setActiveTab("ranking")} className={cn("flex flex-col items-center gap-1.5 transition-all", activeTab === "ranking" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Trophy className={cn("h-7 w-7", activeTab === "ranking" && "fill-current")} /><span className="text-[11px] font-black uppercase italic text-center">Ranking</span></button>
-          <button onClick={() => setActiveTab("tabela")} className={cn("flex flex-col items-center gap-1.5 transition-all", activeTab === "tabela" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><LayoutDashboard className={cn("h-7 w-7", activeTab === "tabela" && "fill-current")} /><span className="text-[11px] font-black uppercase italic text-center">Tabela</span></button>
+          <button onClick={() => setActiveTab("jogos")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "jogos" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Calendar className={cn("h-6 w-6", activeTab === "jogos" && "fill-current")} /><span className="text-[10px] font-black uppercase italic text-center">QUILA</span></button>
+          <button onClick={() => setActiveTab("palpites")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "palpites" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Radar className={cn("h-6 w-6", activeTab === "palpites" && "fill-current")} /><span className="text-[10px] font-black uppercase italic text-center">Palpites</span></button>
+          <button onClick={() => setActiveTab("ranking")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "ranking" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Trophy className={cn("h-6 w-6", activeTab === "ranking" && "fill-current")} /><span className="text-[10px] font-black uppercase italic text-center">Ranking</span></button>
+          <button onClick={() => setActiveTab("tabela")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "tabela" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><LayoutDashboard className={cn("h-6 w-6", activeTab === "tabela" && "fill-current")} /><span className="text-[10px] font-black uppercase italic text-center">Tabela</span></button>
         </div>
       </nav>
     </div>
