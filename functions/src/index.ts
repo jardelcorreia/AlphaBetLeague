@@ -8,11 +8,11 @@ if (admin.apps.length === 0) {
 }
 
 const APP_URL = "https://alphabetleague.netlify.app";
-const API_KEY = process.env.THESPORTSDB_API_KEY || '3';
-const BASE_URL = `https://www.thesportsdb.com/api/v1/json/${API_KEY}`;
-const LEAGUE_ID = '4351'; 
-const SEASON = '2026';
+const BASE_URL = 'https://api.football-data.org/v4';
 
+/**
+ * Verifica se está no horário de silêncio (22h às 08h) para evitar notificações invasivas.
+ */
 function isQuietHours(): boolean {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('pt-BR', {
@@ -24,16 +24,21 @@ function isQuietHours(): boolean {
   return hour >= 22 || hour < 8;
 }
 
+/**
+ * Calcula quantos jogos são válidos para pontuação (dentro da janela de +/- 3 dias da data principal).
+ */
 function getValidMatchesCount(matches: any[]): number {
   if (!matches || matches.length === 0) return 0;
   const matchesToProcess = matches.slice(0, 10);
   const dateCounts: Record<string, number> = {};
+  
   matchesToProcess.forEach(m => {
     if (m.utcDate) {
       const date = m.utcDate.split('T')[0];
       dateCounts[date] = (dateCounts[date] || 0) + 1;
     }
   });
+
   let mainDateStr = "";
   let maxCount = -1;
   for (const date in dateCounts) {
@@ -42,9 +47,12 @@ function getValidMatchesCount(matches: any[]): number {
       mainDateStr = date;
     }
   }
+
   if (!mainDateStr) return matchesToProcess.filter(m => m.status !== 'cancelled').length;
+
   const mainDate = new Date(`${mainDateStr}T12:00:00Z`).getTime();
   const threeDaysInMs = 3 * 24 * 60 * 60 * 1000;
+
   return matchesToProcess.filter(m => {
     if (m.status === 'cancelled') return false;
     if (!m.utcDate) return true;
@@ -54,118 +62,56 @@ function getValidMatchesCount(matches: any[]): number {
   }).length;
 }
 
+/**
+ * Sincroniza dados do Brasileirão a cada 15 minutos.
+ */
 export const syncBrasileiraoData = onSchedule({
   schedule: "every 15 minutes",
+  memory: "256MiB",
 }, async (event) => {
+  const apiKey = process.env.FOOTBALL_DATA_API_KEY;
+  if (!apiKey) {
+    console.error("syncBrasileiraoData: FOOTBALL_DATA_API_KEY não configurada no ambiente do Firebase.");
+    return;
+  }
+
   try {
-    const eventsResponse = await fetch(`${BASE_URL}/eventsseason.php?id=${LEAGUE_ID}&s=${SEASON}`);
-    const eventsData = await eventsResponse.json();
-    if (!eventsData.events || eventsData.events.length === 0) return;
+    // 1. Busca Rodada Atual
+    const compRes = await fetch(`${BASE_URL}/competitions/BSA`, { headers: { 'X-Auth-Token': apiKey } });
+    const compData = await compRes.json();
+    const currentMatchday = compData.currentSeason?.currentMatchday;
+    if (!currentMatchday) return;
 
-    const now = Date.now();
-    const sortedEvents = [...eventsData.events].sort((a: any, b: any) => 
-      new Date(a.strTimestamp).getTime() - new Date(b.strTimestamp).getTime()
-    );
+    // 2. Busca Jogos da Rodada
+    const matchesRes = await fetch(`${BASE_URL}/competitions/BSA/matches?matchday=${currentMatchday}`, { headers: { 'X-Auth-Token': apiKey } });
+    const matchesData = await matchesRes.json();
+    if (!matchesData.matches) return;
 
-    const windowStart = now - 24 * 60 * 60 * 1000;
-    const windowEnd = now + 6 * 24 * 60 * 60 * 1000;
-    const roundVotes: Record<number, number> = {};
-    
-    sortedEvents.forEach((e: any) => {
-      const ts = new Date(e.strTimestamp).getTime();
-      if (ts >= windowStart && ts <= windowEnd) {
-        const r = parseInt(e.intRound);
-        roundVotes[r] = (roundVotes[r] || 0) + 1;
-      }
-    });
-
-    let currentMatchday = 1;
-    let maxVotes = 0;
-    Object.entries(roundVotes).forEach(([r, v]) => {
-      if (v > maxVotes) {
-        maxVotes = v;
-        currentMatchday = parseInt(r);
-      }
-    });
-
-    if (maxVotes === 0) {
-      const upcoming = sortedEvents.find((e: any) => new Date(e.strTimestamp).getTime() > now);
-      currentMatchday = upcoming ? parseInt(upcoming.intRound) : parseInt(sortedEvents[sortedEvents.length - 1].intRound);
-    }
-
-    const roundId = `round_${currentMatchday}`;
-    const roundResponse = await fetch(`${BASE_URL}/eventsround.php?id=${LEAGUE_ID}&r=${currentMatchday}&s=${SEASON}`);
-    const roundData = await roundResponse.json();
-    if (!roundData.events) return;
-
-    const apiMatches = roundData.events.map((m: any) => {
+    const apiMatches = matchesData.matches.map((m: any) => {
       let status = 'upcoming';
-      if (m.strStatus === 'Match Finished') status = 'finished';
-      else if (m.strStatus.includes('In Progress') || m.strStatus.includes('Half Time')) status = 'live';
-      else if (m.strStatus === 'Match Postponed' || m.strStatus === 'Cancelled') status = 'cancelled';
+      if (['IN_PLAY', 'PAUSED', 'LIVE'].includes(m.status)) status = 'live';
+      else if (['FINISHED', 'AWARDED'].includes(m.status)) status = 'finished';
+      else if (['POSTPONED', 'CANCELLED'].includes(m.status)) status = 'cancelled';
+      
       return {
-        id: parseInt(m.idEvent),
-        homeTeam: m.strHomeTeam,
-        awayTeam: m.strAwayTeam,
-        homeScore: m.intHomeScore !== null ? parseInt(m.intHomeScore) : null,
-        awayScore: m.intAwayScore !== null ? parseInt(m.intAwayScore) : null,
-        utcDate: m.strTimestamp,
+        id: m.id,
+        homeTeam: m.homeTeam.name,
+        awayTeam: m.awayTeam.name,
+        homeScore: m.score.fullTime.home,
+        awayScore: m.score.fullTime.away,
+        utcDate: m.utcDate,
         status: status,
-        matchday: parseInt(m.intRound),
+        matchday: m.matchday,
       };
     });
 
+    const roundId = `round_${currentMatchday}`;
     const db = admin.firestore();
     const roundRef = db.collection("rounds").doc(roundId);
     const roundDoc = await roundRef.get();
     const existingData = roundDoc.exists ? roundDoc.data() : null;
 
-    const settingsRef = db.collection("app_settings").doc("championship");
-    const settingsDoc = await settingsRef.get();
-    const lastNotifiedRound = settingsDoc.data()?.lastNotifiedRound || 0;
-
-    if (currentMatchday > lastNotifiedRound && !isQuietHours()) {
-      const usersSnapshot = await db.collection("users").get();
-      const tokens: string[] = [];
-      usersSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.fcmTokens) tokens.push(...data.fcmTokens);
-      });
-
-      if (tokens.length > 0) {
-        const message = {
-          notification: {
-            title: "🚀 Rodada Liberada!",
-            body: `A ${currentMatchday}ª rodada já está disponível. Dê seus palpites agora!`,
-          },
-          tokens: tokens,
-          webpush: { fcmOptions: { link: `${APP_URL}/?tab=jogos` } },
-          data: { link: `${APP_URL}/?tab=jogos` }
-        };
-        try {
-          await admin.messaging().sendEachForMulticast(message);
-          await settingsRef.set({ lastNotifiedRound: currentMatchday }, { merge: true });
-        } catch (err) {
-          console.error(`syncBrasileiraoData: Erro ao enviar notificações:`, err);
-        }
-      }
-    }
-
-    let isScoresHidden = existingData ? (existingData.isScoresHidden ?? true) : true;
-    let autoRevealProcessed = existingData ? (existingData.autoRevealProcessed ?? false) : false;
-
-    const firstMatchTime = apiMatches
-      .filter((m: any) => m.status !== 'cancelled' && m.utcDate)
-      .reduce((earliest: number, m: any) => {
-        const d = new Date(m.utcDate).getTime();
-        return (d > 0 && d < earliest) ? d : earliest;
-      }, Infinity);
-
-    if (isScoresHidden && !autoRevealProcessed && Number.isFinite(firstMatchTime) && now >= firstMatchTime) {
-      isScoresHidden = false;
-      autoRevealProcessed = true;
-    }
-
+    // 3. Mesclagem Híbrida (Respeita isManual: true do Admin)
     let finalMatches = apiMatches;
     if (existingData && existingData.matches) {
       finalMatches = apiMatches.map((apiMatch: any) => {
@@ -173,7 +119,7 @@ export const syncBrasileiraoData = onSchedule({
         if (manualMatch && manualMatch.isManual === true) {
           return {
             ...manualMatch,
-            utcDate: apiMatch.utcDate,
+            utcDate: apiMatch.utcDate, // Sempre atualiza a data caso mude
             homeTeam: apiMatch.homeTeam,
             awayTeam: apiMatch.awayTeam,
             matchday: apiMatch.matchday
@@ -183,9 +129,27 @@ export const syncBrasileiraoData = onSchedule({
       });
     }
 
+    // 4. Lógica de Revelação Automática de Palpites
+    let isScoresHidden = existingData ? (existingData.isScoresHidden ?? true) : true;
+    let autoRevealProcessed = existingData ? (existingData.autoRevealProcessed ?? false) : false;
+
+    const now = Date.now();
+    const firstMatchTime = apiMatches
+      .filter((m: any) => m.status !== 'cancelled' && m.utcDate)
+      .reduce((earliest: number, m: any) => {
+        const d = new Date(m.utcDate).getTime();
+        return (d > 0 && d < earliest) ? d : earliest;
+      }, Infinity);
+
+    if (isScoresHidden && !autoRevealProcessed && Number.isFinite(firstMatchTime) && now >= (firstMatchTime - 5 * 60 * 1000)) {
+      isScoresHidden = false;
+      autoRevealProcessed = true;
+    }
+
+    // 5. Salva Documento
     await roundRef.set({
       id: roundId,
-      roundNumber: parseInt(currentMatchday),
+      roundNumber: currentMatchday,
       name: `Rodada ${currentMatchday}`,
       matches: finalMatches,
       isScoresHidden: isScoresHidden,
@@ -194,20 +158,27 @@ export const syncBrasileiraoData = onSchedule({
       dateCreated: existingData ? existingData.dateCreated : admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
+    console.log(`syncBrasileiraoData: Rodada ${currentMatchday} sincronizada.`);
+
   } catch (error) {
-    console.error("syncBrasileiraoData: Erro na sincronização:", error);
+    console.error("syncBrasileiraoData: Erro fatal:", error);
   }
 });
 
+/**
+ * Consolida o ranking e o histórico financeiro quando uma rodada é atualizada.
+ */
 export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const after = event.data?.after.data();
   if (!after || !after.matches) return;
+
   const roundId = event.params.roundId;
   const roundNumber = parseInt(after.roundNumber);
   if (!roundNumber) return;
 
   const db = admin.firestore();
   try {
+    // 1. Coleta dados de apostas e usuários
     const betsSnapshot = await db.collection(`rounds/${roundId}/bets`).get();
     const betsByUser: Record<string, any[]> = {};
     betsSnapshot.forEach(doc => {
@@ -223,8 +194,8 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
     const pointsMap: Record<string, number> = {};
     const exactScoresMap: Record<string, number> = {};
 
+    // 2. Calcula pontos
     after.matches.forEach((match: any) => {
-      // Ignora jogos cancelados na contagem
       if (match.status === 'cancelled') return;
 
       users.forEach(u => {
@@ -250,7 +221,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       });
     });
 
-    // Verifica se todos os jogos estão finalizados (apenas os que valem pontos)
+    // 3. Verifica se a rodada acabou (apenas jogos válidos dentro dos 10 primeiros)
     const validMatches = after.matches.slice(0, 10).filter((m: any) => m.status !== 'cancelled');
     const allFinished = validMatches.length > 0 && validMatches.every((m: any) => m.status === 'finished');
 
@@ -259,12 +230,14 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       const maxPts = Math.max(...Object.values(pointsMap), 0);
       if (maxPts > 0) {
         const playersWithMaxPts = users.filter(u => pointsMap[u.id] === maxPts);
+        // Desempate por Placares Exatos
         const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0));
         const finalWinners = playersWithMaxPts.filter(u => (exactScoresMap[u.id] || 0) === maxExs);
         winnerNames = finalWinners.map(u => u.username || u.id).join(", ");
       }
     }
 
+    // 4. Atualiza Histórico Geral
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
@@ -273,13 +246,6 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       history = Array.from({ length: 38 }, (_, i) => ({ 
         round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} 
       }));
-    } else if (history.length < 38) {
-      // Garante 38 rodadas
-      const newHistory = Array.from({ length: 38 }, (_, i) => {
-        const existing = history.find((h: any) => h.round === i + 1);
-        return existing || { round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} };
-      });
-      history = newHistory;
     }
 
     const roundIndex = roundNumber - 1;
@@ -287,7 +253,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       history[roundIndex] = { 
         ...history[roundIndex], 
         round: roundNumber, 
-        winners: winnerNames || history[roundIndex].winners || "", // Não sobrescreve se já houver vencedor e a rodada não estiver finalizada agora
+        winners: winnerNames || history[roundIndex].winners || "", 
         pointsMap: pointsMap,
         exactScoresMap: exactScoresMap
       };
@@ -297,26 +263,33 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
         dateUpdated: admin.firestore.FieldValue.serverTimestamp() 
       }, { merge: true });
       
-      console.log(`onRoundUpdateConsolidate: Rodada ${roundNumber} consolidada. Vencedores: ${winnerNames || 'Pendente'}`);
+      console.log(`onRoundUpdateConsolidate: Rodada ${roundNumber} atualizada. Vencedores: ${winnerNames || 'Pendente'}`);
     }
   } catch (error) {
     console.error(`onRoundUpdateConsolidate: Erro na Rodada ${roundNumber}:`, error);
   }
 });
 
+/**
+ * Notifica quando os palpites são revelados.
+ */
 export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const before = event.data?.before.data();
   const after = event.data?.after.data();
   if (!before || !after) return;
+
   if (before.isScoresHidden === true && after.isScoresHidden === false) {
     if (isQuietHours()) return;
+    
     const usersSnapshot = await admin.firestore().collection("users").get();
     const tokens: string[] = [];
     usersSnapshot.forEach((doc) => {
       const data = doc.data();
       if (data.fcmTokens && Array.isArray(data.fcmTokens)) tokens.push(...data.fcmTokens);
     });
+
     if (tokens.length === 0) return;
+
     const message = {
       notification: {
         title: "👀 Palpites Revelados!",
@@ -326,95 +299,11 @@ export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event
       webpush: { fcmOptions: { link: `${APP_URL}/?tab=palpites` } },
       data: { link: `${APP_URL}/?tab=palpites` }
     };
+
     try {
       await admin.messaging().sendEachForMulticast(message);
     } catch (error) {
-      console.error("onRevealScores: Erro:", error);
-    }
-  }
-});
-
-export const onMatchScoreUpdate = onDocumentUpdated("rounds/{roundId}", async (event) => {
-  const after = event.data?.after.data();
-  const before = event.data?.before.data();
-  if (!after || !after.matches || !before || !before.matches) return;
-  const roundId = event.params.roundId;
-  const matches = after.matches;
-  const oldMatches = before.matches;
-  const betsSnapshot = await admin.firestore().collection(`rounds/${roundId}/bets`).get();
-  for (const betDoc of betsSnapshot.docs) {
-    const bet = betDoc.data();
-    const userId = bet.userId;
-    const match = matches.find((m: any) => m.id === bet.matchId);
-    const oldMatch = oldMatches.find((m: any) => m.id === bet.matchId);
-    if (match && match.status === 'finished' && oldMatch && oldMatch.status !== 'finished') {
-      const isExact = bet.homeScorePrediction === match.homeScore && bet.awayScorePrediction === match.awayScore;
-      if (isExact) {
-        const userDoc = await admin.firestore().collection("users").doc(userId).get();
-        const userData = userDoc.data();
-        if (userData && userData.fcmTokens && userData.fcmTokens.length > 0) {
-          const message = {
-            notification: {
-              title: "🎯 NA MOSCA!",
-              body: `Você cravou o placar de um jogo na ${after.name}! +3 pontos garantidos.`,
-            },
-            tokens: userData.fcmTokens,
-            webpush: { fcmOptions: { link: `${APP_URL}/?tab=jogos` } },
-            data: { link: `${APP_URL}/?tab=jogos` }
-          };
-          try {
-            await admin.messaging().sendEachForMulticast(message);
-          } catch (error) {
-            console.error(`onMatchScoreUpdate: Erro para ${userId}:`, error);
-          }
-        }
-      }
-    }
-  }
-});
-
-export const notifyRoundStart = onSchedule("every 30 minutes", async (event) => {
-  if (isQuietHours()) return;
-  const db = admin.firestore();
-  const roundsSnapshot = await db.collection("rounds").orderBy("roundNumber", "desc").limit(1).get();
-  if (roundsSnapshot.empty) return;
-  const currentRound = roundsSnapshot.docs[0];
-  const roundData = currentRound.data();
-  const roundId = currentRound.id;
-  if (roundData.isScoresHidden === false) return;
-  const matches = roundData.matches || [];
-  const targetCount = getValidMatchesCount(matches);
-  if (targetCount === 0) return;
-  const firstMatchTime = matches.filter((m: any) => m.status !== 'cancelled' && m.utcDate).reduce((earliest: number, m: any) => {
-    const d = new Date(m.utcDate).getTime();
-    return (d > 0 && d < earliest) ? d : earliest;
-  }, Infinity);
-  if (!Number.isFinite(firstMatchTime)) return;
-  const now = Date.now();
-  const twentyFourHours = 24 * 60 * 60 * 1000;
-  if (now < (firstMatchTime - twentyFourHours) || now >= firstMatchTime) return;
-  const usersSnapshot = await db.collection("users").get();
-  for (const userDoc of usersSnapshot.docs) {
-    const userData = userDoc.data();
-    const userId = userDoc.id;
-    if (!userData.fcmTokens || userData.fcmTokens.length === 0) continue;
-    const userBetsSnapshot = await db.collection(`rounds/${roundId}/bets`).where("userId", "==", userId).get();
-    if (userBetsSnapshot.size < targetCount) {
-      const remaining = targetCount - userBetsSnapshot.size;
-      const message = {
-        notification: {
-          title: "⚠️ PALPITES PENDENTES!",
-          body: `Ei ${userData.username || 'campeão'}, faltam ${remaining} palpite${remaining > 1 ? 's' : ''} para a ${roundData.name}. O primeiro jogo já vai começar!`,
-        },
-        tokens: userData.fcmTokens,
-        webpush: { fcmOptions: { link: `${APP_URL}/?tab=jogos` } },
-        data: { link: `${APP_URL}/?tab=jogos` }
-      };
-      try {
-        await admin.messaging().sendEachForMulticast(message);
-      } catch (error) {
-        console.error(`notifyRoundStart: Erro para ${userId}:`, error);
-      }
+      console.error("onRevealScores: Erro no envio push:", error);
     }
   }
 });
