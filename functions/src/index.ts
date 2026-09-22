@@ -203,8 +203,9 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
   const after = event.data?.after.data();
   if (!after || !after.matches) return;
   const roundId = event.params.roundId;
-  const roundNumber = after.roundNumber;
+  const roundNumber = parseInt(after.roundNumber);
   if (!roundNumber) return;
+
   const db = admin.firestore();
   try {
     const betsSnapshot = await db.collection(`rounds/${roundId}/bets`).get();
@@ -214,6 +215,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       if (!betsByUser[bet.userId]) betsByUser[bet.userId] = [];
       betsByUser[bet.userId].push(bet);
     });
+
     const usersSnapshot = await db.collection("users").get();
     const users: any[] = [];
     usersSnapshot.forEach(doc => users.push(doc.data()));
@@ -221,55 +223,82 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
     const pointsMap: Record<string, number> = {};
     const exactScoresMap: Record<string, number> = {};
 
-    users.forEach(u => {
-      let pts = 0;
-      let exs = 0;
-      const userBets = betsByUser[u.id] || [];
-      after.matches.forEach((match: any) => {
-        if (match.status !== 'finished' && match.status !== 'live') return;
+    after.matches.forEach((match: any) => {
+      // Ignora jogos cancelados na contagem
+      if (match.status === 'cancelled') return;
+
+      users.forEach(u => {
+        if (!pointsMap[u.id]) pointsMap[u.id] = 0;
+        if (!exactScoresMap[u.id]) exactScoresMap[u.id] = 0;
+
+        const userBets = betsByUser[u.id] || [];
         const bet = userBets.find(b => b.matchId === match.id);
         if (!bet) return;
+
         const rh = match.homeScore, ra = match.awayScore;
         const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
+
         if (rh !== null && ra !== null && ph !== undefined && pa !== undefined) {
           if (ph === rh && pa === ra) {
-            pts += 3;
-            exs += 1;
+            pointsMap[u.id] += 3;
+            exactScoresMap[u.id] += 1;
           }
           else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) {
-            pts += 1;
+            pointsMap[u.id] += 1;
           }
         }
       });
-      pointsMap[u.id] = pts;
-      exactScoresMap[u.id] = exs;
     });
 
-    const maxPts = Math.max(...Object.values(pointsMap), 0);
-    let finalWinners: any[] = [];
-    
-    if (maxPts > 0) {
-      const playersWithMaxPts = users.filter(u => pointsMap[u.id] === maxPts);
-      // Critério de Desempate: Mais Placares Exatos
-      const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0));
-      finalWinners = playersWithMaxPts.filter(u => (exactScoresMap[u.id] || 0) === maxExs);
+    // Verifica se todos os jogos estão finalizados (apenas os que valem pontos)
+    const validMatches = after.matches.slice(0, 10).filter((m: any) => m.status !== 'cancelled');
+    const allFinished = validMatches.length > 0 && validMatches.every((m: any) => m.status === 'finished');
+
+    let winnerNames = "";
+    if (allFinished) {
+      const maxPts = Math.max(...Object.values(pointsMap), 0);
+      if (maxPts > 0) {
+        const playersWithMaxPts = users.filter(u => pointsMap[u.id] === maxPts);
+        const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0));
+        const finalWinners = playersWithMaxPts.filter(u => (exactScoresMap[u.id] || 0) === maxExs);
+        winnerNames = finalWinners.map(u => u.username || u.id).join(", ");
+      }
     }
 
-    const winnerNames = finalWinners.map(u => u.username || u.id).join(", ");
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
-    if (!history) {
-      history = Array.from({ length: 38 }, (_, i) => ({ round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} }));
+
+    if (!history || !Array.isArray(history)) {
+      history = Array.from({ length: 38 }, (_, i) => ({ 
+        round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} 
+      }));
+    } else if (history.length < 38) {
+      // Garante 38 rodadas
+      const newHistory = Array.from({ length: 38 }, (_, i) => {
+        const existing = history.find((h: any) => h.round === i + 1);
+        return existing || { round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} };
+      });
+      history = newHistory;
     }
-    history[roundNumber - 1] = { 
-      ...history[roundNumber - 1], 
-      round: roundNumber, 
-      winners: winnerNames, 
-      pointsMap: pointsMap,
-      exactScoresMap: exactScoresMap
-    };
-    await settingsRef.set({ history, dateUpdated: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+
+    const roundIndex = roundNumber - 1;
+    if (roundIndex >= 0 && roundIndex < 38) {
+      history[roundIndex] = { 
+        ...history[roundIndex], 
+        round: roundNumber, 
+        winners: winnerNames || history[roundIndex].winners || "", // Não sobrescreve se já houver vencedor e a rodada não estiver finalizada agora
+        pointsMap: pointsMap,
+        exactScoresMap: exactScoresMap
+      };
+
+      await settingsRef.set({ 
+        history, 
+        dateUpdated: admin.firestore.FieldValue.serverTimestamp() 
+      }, { merge: true });
+      
+      console.log(`onRoundUpdateConsolidate: Rodada ${roundNumber} consolidada. Vencedores: ${winnerNames || 'Pendente'}`);
+    }
   } catch (error) {
     console.error(`onRoundUpdateConsolidate: Erro na Rodada ${roundNumber}:`, error);
   }

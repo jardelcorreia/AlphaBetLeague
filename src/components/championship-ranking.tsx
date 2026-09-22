@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useMemo } from "react";
@@ -31,6 +32,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       const idx = history.findIndex(h => h.round === currentRoundNumber);
       const existing = idx !== -1 ? history[idx] : null;
       
+      // Só adiciona vencedor virtual se o campo winners no banco de dados estiver vazio
       if (!existing || !existing.winners) {
         const maxPts = Math.max(...currentRoundScores.map(s => s.points));
         if (maxPts > 0) {
@@ -49,14 +51,6 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
           if (idx !== -1) {
             history[idx] = virtualEntry;
-          } else {
-            // Garantir que o array tenha o tamanho correto
-            const fullHistory = Array.from({ length: 38 }, (_, i) => {
-              const r = i + 1;
-              if (r === currentRoundNumber) return virtualEntry;
-              return history.find(h => h.round === r) || { round: r, winners: "", value: 6 };
-            });
-            return fullHistory;
           }
         }
       }
@@ -65,7 +59,8 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
     // Garante que o histórico sempre tenha 38 posições para o map
     return Array.from({ length: 38 }, (_, i) => {
       const r = i + 1;
-      return history.find(h => h.round === r) || { round: r, winners: "", value: 6 };
+      const found = history.find(h => h.round === r);
+      return found || { round: r, winners: "", value: 6 };
     });
   }, [roundWinners, currentRoundScores, currentRoundNumber, isRoundFinished]);
 
@@ -78,9 +73,9 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
     const processedRounds = new Set<number>();
     
-    // Usamos o histórico de exibição para calcular as estatísticas, pois ele já contém a lógica de desempate
+    // Usamos o histórico de exibição para calcular as estatísticas
     historyForDisplay.forEach((rw) => {
-      if (!rw.winners || processedRounds.has(rw.round)) return;
+      if (!rw.winners) return;
       processedRounds.add(rw.round);
 
       const ptsEntries = Object.entries(rw.pointsMap || {});
@@ -115,7 +110,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       }
     });
 
-    // Se a rodada atual não está finalizada mas tem pontos, somamos apenas os pontos/exatos
+    // Se a rodada atual não está finalizada mas tem pontos, somamos apenas os pontos/exatos para o ranking tempo real
     if (currentRoundScores && currentRoundNumber && !processedRounds.has(currentRoundNumber)) {
       currentRoundScores.forEach(s => {
         if (stats[s.id]) {
