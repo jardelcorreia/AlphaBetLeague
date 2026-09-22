@@ -1,4 +1,3 @@
-
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
@@ -10,9 +9,6 @@ if (admin.apps.length === 0) {
 const APP_URL = "https://alphabetleague.netlify.app";
 const BASE_URL = 'https://api.football-data.org/v4';
 
-/**
- * Verifica se está no horário de silêncio (22h às 08h) para evitar notificações invasivas.
- */
 function isQuietHours(): boolean {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('pt-BR', {
@@ -24,9 +20,6 @@ function isQuietHours(): boolean {
   return hour >= 22 || hour < 8;
 }
 
-/**
- * Calcula quantos jogos são válidos para pontuação (dentro da janela de +/- 3 dias da data principal).
- */
 function getValidMatchesCount(matches: any[]): number {
   if (!matches || matches.length === 0) return 0;
   const matchesToProcess = matches.slice(0, 10);
@@ -62,27 +55,23 @@ function getValidMatchesCount(matches: any[]): number {
   }).length;
 }
 
-/**
- * Sincroniza dados do Brasileirão a cada 15 minutos.
- */
 export const syncBrasileiraoData = onSchedule({
   schedule: "every 15 minutes",
   memory: "256MiB",
+  secrets: ["FOOTBALL_DATA_API_KEY"],
 }, async (event) => {
   const apiKey = process.env.FOOTBALL_DATA_API_KEY;
   if (!apiKey) {
-    console.error("syncBrasileiraoData: FOOTBALL_DATA_API_KEY não configurada no ambiente do Firebase.");
+    console.error("syncBrasileiraoData: FOOTBALL_DATA_API_KEY não configurada.");
     return;
   }
 
   try {
-    // 1. Busca Rodada Atual
     const compRes = await fetch(`${BASE_URL}/competitions/BSA`, { headers: { 'X-Auth-Token': apiKey } });
     const compData = await compRes.json();
     const currentMatchday = compData.currentSeason?.currentMatchday;
     if (!currentMatchday) return;
 
-    // 2. Busca Jogos da Rodada
     const matchesRes = await fetch(`${BASE_URL}/competitions/BSA/matches?matchday=${currentMatchday}`, { headers: { 'X-Auth-Token': apiKey } });
     const matchesData = await matchesRes.json();
     if (!matchesData.matches) return;
@@ -111,7 +100,6 @@ export const syncBrasileiraoData = onSchedule({
     const roundDoc = await roundRef.get();
     const existingData = roundDoc.exists ? roundDoc.data() : null;
 
-    // 3. Mesclagem Híbrida (Respeita isManual: true do Admin)
     let finalMatches = apiMatches;
     if (existingData && existingData.matches) {
       finalMatches = apiMatches.map((apiMatch: any) => {
@@ -119,7 +107,7 @@ export const syncBrasileiraoData = onSchedule({
         if (manualMatch && manualMatch.isManual === true) {
           return {
             ...manualMatch,
-            utcDate: apiMatch.utcDate, // Sempre atualiza a data caso mude
+            utcDate: apiMatch.utcDate,
             homeTeam: apiMatch.homeTeam,
             awayTeam: apiMatch.awayTeam,
             matchday: apiMatch.matchday
@@ -129,7 +117,6 @@ export const syncBrasileiraoData = onSchedule({
       });
     }
 
-    // 4. Lógica de Revelação Automática de Palpites
     let isScoresHidden = existingData ? (existingData.isScoresHidden ?? true) : true;
     let autoRevealProcessed = existingData ? (existingData.autoRevealProcessed ?? false) : false;
 
@@ -146,7 +133,6 @@ export const syncBrasileiraoData = onSchedule({
       autoRevealProcessed = true;
     }
 
-    // 5. Salva Documento
     await roundRef.set({
       id: roundId,
       roundNumber: currentMatchday,
@@ -165,9 +151,6 @@ export const syncBrasileiraoData = onSchedule({
   }
 });
 
-/**
- * Consolida o ranking e o histórico financeiro quando uma rodada é atualizada.
- */
 export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const after = event.data?.after.data();
   if (!after || !after.matches) return;
@@ -178,7 +161,6 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
 
   const db = admin.firestore();
   try {
-    // 1. Coleta dados de apostas e usuários
     const betsSnapshot = await db.collection(`rounds/${roundId}/bets`).get();
     const betsByUser: Record<string, any[]> = {};
     betsSnapshot.forEach(doc => {
@@ -194,7 +176,6 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
     const pointsMap: Record<string, number> = {};
     const exactScoresMap: Record<string, number> = {};
 
-    // 2. Calcula pontos
     after.matches.forEach((match: any) => {
       if (match.status === 'cancelled') return;
 
@@ -221,7 +202,6 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       });
     });
 
-    // 3. Verifica se a rodada acabou (apenas jogos válidos dentro dos 10 primeiros)
     const validMatches = after.matches.slice(0, 10).filter((m: any) => m.status !== 'cancelled');
     const allFinished = validMatches.length > 0 && validMatches.every((m: any) => m.status === 'finished');
 
@@ -230,14 +210,12 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       const maxPts = Math.max(...Object.values(pointsMap), 0);
       if (maxPts > 0) {
         const playersWithMaxPts = users.filter(u => pointsMap[u.id] === maxPts);
-        // Desempate por Placares Exatos
         const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0));
         const finalWinners = playersWithMaxPts.filter(u => (exactScoresMap[u.id] || 0) === maxExs);
         winnerNames = finalWinners.map(u => u.username || u.id).join(", ");
       }
     }
 
-    // 4. Atualiza Histórico Geral
     const settingsRef = db.collection("app_settings").doc("championship");
     const settingsDoc = await settingsRef.get();
     let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
@@ -262,17 +240,12 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
         history, 
         dateUpdated: admin.firestore.FieldValue.serverTimestamp() 
       }, { merge: true });
-      
-      console.log(`onRoundUpdateConsolidate: Rodada ${roundNumber} atualizada. Vencedores: ${winnerNames || 'Pendente'}`);
     }
   } catch (error) {
     console.error(`onRoundUpdateConsolidate: Erro na Rodada ${roundNumber}:`, error);
   }
 });
 
-/**
- * Notifica quando os palpites são revelados.
- */
 export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event) => {
   const before = event.data?.before.data();
   const after = event.data?.after.data();
