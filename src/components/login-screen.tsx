@@ -27,7 +27,8 @@ import {
   EyeOff,
   Mail,
   UserPlus,
-  ArrowLeft
+  ArrowLeft,
+  Trophy
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import placeholderData from "@/app/lib/placeholder-images.json";
@@ -173,45 +174,45 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
             src={stadiumImage?.imageUrl || ""} 
             alt="Estádio" 
             fill 
-            className="object-cover opacity-30"
+            className="object-cover opacity-[0.15] dark:opacity-20 grayscale"
             priority
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-background/80 to-background" />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-background/90 to-background" />
         </div>
 
         <div className="relative z-10 w-full max-w-md space-y-8 animate-in fade-in slide-in-from-top-4 duration-700">
           <div className="flex flex-col items-center text-center gap-4">
-            <div className="relative h-20 w-20 animate-float">
-              <Image src="/icons/android-chrome-512x512.png?v=3" alt="AlphaBet Logo" fill className="object-contain" />
+            <div className="relative h-20 w-20 flex items-center justify-center">
+              <Trophy className="h-16 w-16 text-primary animate-float drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
             </div>
             <div className="space-y-1">
               <h1 className="text-4xl font-black italic uppercase tracking-tighter text-primary leading-none">
-                AlphaBet <span className="text-foreground">League</span>
+                AlphaBet <span className="text-foreground dark:text-white">League</span>
               </h1>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.3em]">Brasileirão 2026</p>
             </div>
           </div>
 
-          <Card className="glass-card border-none rounded-[2.5rem] shadow-2xl overflow-hidden">
-            <CardHeader className="text-center pb-2">
+          <Card className="glass-card border-none rounded-[2.5rem] shadow-2xl overflow-hidden ring-1 ring-white/10">
+            <CardHeader className="text-center pb-2 pt-8">
               <CardTitle className="text-2xl font-black italic uppercase text-primary">
                 {mode === "login" ? "Entrar na Arena" : mode === "register" ? "Novo Recruta" : "Recuperar Acesso"}
               </CardTitle>
-              <CardDescription className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <CardDescription className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
                 {mode === "login" ? "Identifique-se para palpitar" : mode === "register" ? "Crie seu perfil oficial" : "Enviaremos um link para seu e-mail"}
               </CardDescription>
             </CardHeader>
 
             <form onSubmit={mode === "login" ? handleLogin : mode === "register" ? handleRegister : handleForgotPassword}>
-              <CardContent className="p-8 space-y-4">
+              <CardContent className="p-8 space-y-6">
                 {mode === "register" && (
                   <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Nome de Jogador</Label>
-                    <div className="relative">
-                      <User className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40" />
+                    <div className="relative group">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40 group-focus-within:text-primary transition-colors" />
                       <Input 
                         placeholder="Ex: Jardel Alpha" 
-                        className="h-12 pl-12 rounded-2xl border-primary/10 bg-primary/5 font-bold"
+                        className="h-12 pl-12 rounded-2xl border-white/5 bg-primary/[0.03] dark:bg-white/[0.02] font-bold focus:bg-primary/[0.05] transition-all"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required={mode === "register"}
@@ -223,12 +224,12 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
 
                 <div className="space-y-2">
                   <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Seu E-mail Real</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40" />
+                  <div className="relative group">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40 group-focus-within:text-primary transition-colors" />
                     <Input 
                       type="email"
                       placeholder="seu@email.com" 
-                      className="h-12 pl-12 rounded-2xl border-primary/10 bg-primary/5 font-bold"
+                      className="h-12 pl-12 rounded-2xl border-white/5 bg-primary/[0.03] dark:bg-white/[0.02] font-bold focus:bg-primary/[0.05] transition-all"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -251,12 +252,12 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
                           </button>
                         )}
                       </div>
-                      <div className="relative">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40" />
+                      <div className="relative group">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40 group-focus-within:text-primary transition-colors" />
                         <Input
                           type={showPassword ? "text" : "password"}
                           placeholder="••••••••"
-                          className="h-12 pl-12 pr-12 rounded-2xl border-primary/10 bg-primary/5 font-bold"
+                          className="h-12 pl-12 pr-12 rounded-2xl border-white/5 bg-primary/[0.03] dark:bg-white/[0.02] font-bold focus:bg-primary/[0.05] transition-all"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           required
@@ -274,12 +275,12 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
                     {mode === "register" && (
                       <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
                         <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Repetir Chave</Label>
-                        <div className="relative">
-                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40" />
+                        <div className="relative group">
+                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/40 group-focus-within:text-primary transition-colors" />
                           <Input
                             type={showConfirmPassword ? "text" : "password"}
                             placeholder="••••••••"
-                            className="h-12 pl-12 pr-12 rounded-2xl border-primary/10 bg-primary/5 font-bold"
+                            className="h-12 pl-12 pr-12 rounded-2xl border-white/5 bg-primary/[0.03] dark:bg-white/[0.02] font-bold focus:bg-primary/[0.05] transition-all"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             required={mode === "register"}
@@ -308,7 +309,7 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
               <CardFooter className="px-8 pb-10 flex flex-col gap-4">
                 <Button 
                   type="submit" 
-                  className="w-full h-14 rounded-2xl text-lg font-black italic uppercase gap-3 sports-gradient shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all group" 
+                  className="w-full h-14 rounded-2xl text-lg font-black italic uppercase gap-3 sports-gradient shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all group glow-primary" 
                   disabled={loading}
                 >
                   {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (
@@ -320,7 +321,7 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
                 </Button>
 
                 <div className="flex items-center justify-center gap-2">
-                  <div className="h-px w-8 bg-muted" />
+                  <div className="h-px w-8 bg-white/5" />
                   <button 
                     type="button" 
                     onClick={mode === "forgot-password" ? () => setAuthMode("login") : toggleMode}
@@ -334,7 +335,7 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
                       <><ArrowLeft className="h-3 w-3" /> Voltar para o login</>
                     )}
                   </button>
-                  <div className="h-px w-8 bg-muted" />
+                  <div className="h-px w-8 bg-white/5" />
                 </div>
               </CardFooter>
             </form>

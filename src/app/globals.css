@@ -1,4 +1,3 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,7 +10,7 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 217 91% 60%; /* Electric Blue #3B82F6 - Harmonizado com a logo */
+    --primary: 217 91% 60%; /* Electric Blue #3B82F6 */
     --primary-foreground: 210 40% 98%;
     --secondary: 142.1 76.2% 36.3%; /* Pitch Green */
     --secondary-foreground: 355.7 100% 97.3%;
@@ -28,25 +27,24 @@
   }
 
   .dark {
-    --background: 222 35% 15%; /* Navy Blue Suave */
+    --background: 230 40% 4%; /* Deep Obsidian Black */
     --foreground: 210 40% 98%;
-    --card: 222 35% 18%;
+    --card: 230 35% 7%; /* Rich Navy Black */
     --card-foreground: 210 40% 98%;
-    --popover: 222 35% 15%;
+    --popover: 230 40% 4%;
     --popover-foreground: 210 40% 98%;
     --primary: 217 91% 60%;
-    --primary-foreground: 222 35% 15%;
+    --primary-foreground: 230 40% 4%;
     --secondary: 142.1 70.6% 45.3%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 222 35% 22%;
+    --muted: 230 25% 12%;
     --muted-foreground: 215 20.2% 65.1%;
     --accent: 47.9 95.8% 53.1%;
-    /* O texto sobre o dourado deve ser sempre escuro para contraste */
     --accent-foreground: 222.2 47.4% 11.2%; 
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 222 30% 25%;
-    --input: 222 30% 20%;
+    --border: 230 20% 15%;
+    --input: 230 20% 12%;
     --ring: 217 91% 60%;
   }
 }
@@ -57,6 +55,8 @@
   }
   body {
     @apply bg-background text-foreground font-body transition-colors duration-300;
+    background-image: radial-gradient(circle at top right, rgba(59, 130, 246, 0.03), transparent 40%),
+                      radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.03), transparent 40%);
   }
 }
 
@@ -71,11 +71,19 @@
 }
 
 .glass-card {
-  @apply bg-white/80 dark:bg-card/70 backdrop-blur-md border border-white/20 dark:border-white/5 shadow-xl transition-colors duration-300;
+  @apply bg-white/80 dark:bg-card/40 backdrop-blur-xl border border-white/20 dark:border-white/5 shadow-xl transition-all duration-300;
+}
+
+.dark .glass-card {
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
 }
 
 .sports-gradient {
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, #1e40af 100%);
+}
+
+.glow-primary {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
 }
 
 @keyframes float {
