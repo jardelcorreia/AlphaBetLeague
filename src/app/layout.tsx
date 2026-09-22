@@ -6,7 +6,7 @@ import { FirebaseClientProvider } from "@/firebase";
 export const metadata: Metadata = {
   title: 'AlphaBet League - Brasileirão 2026',
   description: 'Dê seus palpites e compita com seus amigos na AlphaBet League do Brasileirão.',
-  themeColor: '#3b82f6',
+  themeColor: '#050810',
   viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0',
   appleWebApp: {
     capable: true,
@@ -14,8 +14,13 @@ export const metadata: Metadata = {
     title: 'AlphaBet',
   },
   icons: {
-    icon: '/icons/android-chrome-512x512.png?v=4',
-    apple: '/icons/apple-touch-icon.png?v=4',
+    icon: [
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
 };
 
