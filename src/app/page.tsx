@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
@@ -396,7 +395,7 @@ function HomeContent() {
         const matchIdx = parseInt(parts[parts.length - 1]);
         const bUserId = bet.userId;
         if (bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10) {
-          next[bUserId][matchIdx] = { homeScore: bet.homeScorePrediction?.toString() || "", awayScore: bet.awayScorePrediction?.toString() || "" };
+          next[bUserId][matchIdx] = { homeScore: bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10 ? bet.homeScorePrediction?.toString() || "" : "", awayScore: bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10 ? bet.awayScorePrediction?.toString() || "" : "" };
         }
       });
       return next;
@@ -486,33 +485,33 @@ function HomeContent() {
               </div>
             </div>
             <div className="flex flex-col">
-              <h1 className="text-lg font-black italic uppercase tracking-tighter text-primary leading-none">AlphaBet</h1>
-              <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-widest">Brasileirão 2026</span>
+              <h1 className="text-xl font-black italic uppercase tracking-tighter text-primary leading-none">AlphaBet</h1>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Brasileirão 2026</span>
             </div>
           </div>
           <div className="hidden md:flex items-center bg-muted/30 rounded-2xl p-1 gap-1 border border-primary/5">
-            <button onClick={() => setActiveTab("jogos")} className={cn("px-5 py-2 rounded-xl text-[10px] font-black uppercase italic transition-all flex items-center gap-2", activeTab === "jogos" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Calendar className="h-3 w-3" />QUILA/JOGOS</button>
-            <button onClick={() => setActiveTab("palpites")} className={cn("px-5 py-2 rounded-xl text-[10px] font-black uppercase italic transition-all flex items-center gap-2", activeTab === "palpites" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Radar className="h-3 w-3" />Palpites</button>
-            <button onClick={() => setActiveTab("ranking")} className={cn("px-5 py-2 rounded-xl text-[10px] font-black uppercase italic transition-all flex items-center gap-2", activeTab === "ranking" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Trophy className="h-3 w-3" />Ranking</button>
-            <button onClick={() => setActiveTab("tabela")} className={cn("px-5 py-2 rounded-xl text-[10px] font-black uppercase italic transition-all flex items-center gap-2", activeTab === "tabela" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><LayoutDashboard className="h-3 w-3" />Tabela</button>
+            <button onClick={() => setActiveTab("jogos")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "jogos" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Calendar className="h-4 w-4" />QUILA/JOGOS</button>
+            <button onClick={() => setActiveTab("palpites")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "palpites" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Radar className="h-4 w-4" />Palpites</button>
+            <button onClick={() => setActiveTab("ranking")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "ranking" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Trophy className="h-4 w-4" />Ranking</button>
+            <button onClick={() => setActiveTab("tabela")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "tabela" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><LayoutDashboard className="h-4 w-4" />Tabela</button>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
-             {isAdminUser && (<Link href="/admin"><Button variant="outline" size="sm" className="rounded-xl h-8 text-[9px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Shield className="h-3 w-3" />Painel ADM</Button></Link>)}
-             {isInstallable && (<Button variant="outline" size="sm" onClick={handleInstall} className="hidden lg:flex rounded-xl h-8 text-[9px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Download className="h-3 w-3" />Instalar App</Button>)}
-             <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black italic hidden sm:inline-flex">#{currentRound || "?"}</Badge>
+             {isAdminUser && (<Link href="/admin"><Button variant="outline" size="sm" className="rounded-xl h-9 text-[11px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Shield className="h-4 w-4" />Painel ADM</Button></Link>)}
+             {isInstallable && (<Button variant="outline" size="sm" onClick={handleInstall} className="hidden lg:flex rounded-xl h-9 text-[11px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Download className="h-4 w-4" />Instalar App</Button>)}
+             <Badge className="bg-primary/10 text-primary border-none text-[11px] font-black italic hidden sm:inline-flex px-3 h-7">#{currentRound || "?"}</Badge>
              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <div className="relative group cursor-pointer transition-transform active:scale-95">
-                    <div className="h-9 w-9 bg-primary/5 rounded-xl flex items-center justify-center p-[2px] border border-primary/10 shadow-sm">
+                    <div className="h-10 w-10 bg-primary/5 rounded-xl flex items-center justify-center p-[2px] border border-primary/10 shadow-sm">
                       <Avatar className="h-full w-full rounded-lg border border-background shadow-md overflow-hidden bg-muted flex items-center justify-center">
                         <AvatarImage src={currentUserFirestore?.photoUrl || user.photoURL || undefined} className="object-cover" />
-                        <AvatarFallback className="bg-primary/10 text-primary font-black text-[10px]">{currentUserFirestore?.username ? currentUserFirestore.username.substring(0,2).toUpperCase() : user.displayName ? user.displayName.substring(0,2).toUpperCase() : "AL"}</AvatarFallback>
+                        <AvatarFallback className="bg-primary/10 text-primary font-black text-xs">{currentUserFirestore?.username ? currentUserFirestore.username.substring(0,2).toUpperCase() : user.displayName ? user.displayName.substring(0,2).toUpperCase() : "AL"}</AvatarFallback>
                       </Avatar>
                     </div>
                   </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 rounded-2xl border bg-background shadow-2xl p-2 z-[60]">
-                  <DropdownMenuLabel className="font-black italic uppercase text-[10px] text-muted-foreground tracking-widest px-3 py-2">Minha Conta</DropdownMenuLabel>
+                  <DropdownMenuLabel className="font-black italic uppercase text-xs text-muted-foreground tracking-widest px-3 py-2">Minha Conta</DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-primary/5" />
                   <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setShowProfileDialog(true); }} className="rounded-xl gap-2 font-bold cursor-pointer py-3 focus:bg-primary/10"><UserCircle className="h-4 w-4 text-primary" />Editar Perfil</DropdownMenuItem>
                   {isAdminUser && (<Link href="/admin"><DropdownMenuItem className="rounded-xl gap-2 font-bold cursor-pointer py-3 focus:bg-primary/10"><Settings className="h-4 w-4 text-primary" />Área Administrativa</DropdownMenuItem></Link>)}
@@ -540,23 +539,23 @@ function HomeContent() {
               {isInstallable && (
                 <div className="glass-card border-none rounded-[2rem] p-6 flex flex-col sm:flex-row items-center justify-between gap-6 overflow-hidden relative group">
                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Smartphone className="h-16 w-16 text-primary" /></div>
-                  <div className="flex items-center gap-4 relative z-10 text-center sm:text-left"><div className="h-12 w-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0"><Smartphone className="h-6 w-6 text-primary" /></div><div><h4 className="text-sm font-black italic uppercase text-primary leading-tight">Instale o App</h4><p className="text-[10px] font-medium text-muted-foreground">Acesso rápido na tela inicial.</p></div></div>
-                  <Button onClick={handleInstall} size="sm" className="rounded-xl h-10 px-6 font-black italic uppercase gap-2 shadow-lg shadow-primary/20 relative z-10 w-full sm:w-auto"><Download className="h-4 w-4" />Instalar</Button>
+                  <div className="flex items-center gap-4 relative z-10 text-center sm:text-left"><div className="h-12 w-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0"><Smartphone className="h-6 w-6 text-primary" /></div><div><h4 className="text-base font-black italic uppercase text-primary leading-tight">Instale o App</h4><p className="text-xs font-medium text-muted-foreground">Acesso rápido na tela inicial.</p></div></div>
+                  <Button onClick={handleInstall} size="sm" className="rounded-xl h-11 px-6 font-black italic uppercase gap-2 shadow-lg shadow-primary/20 relative z-10 w-full sm:w-auto"><Download className="h-5 w-5" />Instalar</Button>
                 </div>
               )}
               {isFcmSupported && permission === 'default' && (
                 <div className="glass-card border-none rounded-[2rem] p-6 flex flex-col sm:flex-row items-center justify-between gap-6 overflow-hidden relative group">
                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><BellRing className="h-16 w-16 text-accent" /></div>
-                  <div className="flex items-center gap-4 relative z-10 text-center sm:text-left"><div className="h-12 w-12 bg-accent/10 rounded-xl flex items-center justify-center shrink-0"><Bell className="h-6 w-6 text-accent" /></div><div><h4 className="text-sm font-black italic uppercase text-accent leading-tight">Ative Lembretes</h4><p className="text-[10px] font-medium text-muted-foreground">Não perca o prazo de palpitar na rodada.</p></div></div>
-                  <Button onClick={requestPermission} size="sm" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-xl h-10 px-6 font-black italic uppercase gap-2 shadow-lg shadow-accent/20 relative z-10 w-full sm:w-auto"><BellRing className="h-4 w-4" />Ativar</Button>
+                  <div className="flex items-center gap-4 relative z-10 text-center sm:text-left"><div className="h-12 w-12 bg-accent/10 rounded-xl flex items-center justify-center shrink-0"><Bell className="h-6 w-6 text-accent" /></div><div><h4 className="text-base font-black italic uppercase text-accent leading-tight">Ative Lembretes</h4><p className="text-xs font-medium text-muted-foreground">Não perca o prazo de palpitar na rodada.</p></div></div>
+                  <Button onClick={requestPermission} size="sm" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-xl h-11 px-6 font-black italic uppercase gap-2 shadow-lg shadow-accent/20 relative z-10 w-full sm:w-auto"><BellRing className="h-5 w-5" />Ativar</Button>
                 </div>
               )}
               {showNotificationSuccess && (
-                <div className="glass-card border-none rounded-[2rem] p-6 flex items-center gap-4 overflow-hidden relative group bg-secondary/5 animate-in fade-in slide-in-from-top-4 duration-500"><div className="h-10 w-10 bg-secondary/10 rounded-xl flex items-center justify-center shrink-0"><CheckCircle2 className="h-5 w-5 text-secondary" /></div><div><h4 className="text-[10px] font-black italic uppercase text-secondary">Notificações Ativas</h4><p className="text-[9px] font-medium text-muted-foreground">Lembretes de palpites e resultados ativados.</p></div></div>
+                <div className="glass-card border-none rounded-[2rem] p-6 flex items-center gap-4 overflow-hidden relative group bg-secondary/5 animate-in fade-in slide-in-from-top-4 duration-500"><div className="h-10 w-10 bg-secondary/10 rounded-xl flex items-center justify-center shrink-0"><CheckCircle2 className="h-6 w-6 text-secondary" /></div><div><h4 className="text-xs font-black italic uppercase text-secondary">Notificações Ativas</h4><p className="text-[10px] font-medium text-muted-foreground">Lembretes de palpites e resultados ativados.</p></div></div>
               )}
             </div>
             <section className="space-y-4">
-              <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Medal className="h-5 w-5 text-accent" /><h2 className="text-lg font-black italic uppercase">Pontuação da Rodada</h2></div>{(loadingMatches || isLoadingBets || isLoadingRound) && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}</div>
+              <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Medal className="h-6 w-6 text-accent" /><h2 className="text-xl font-black italic uppercase">Pontuação da Rodada</h2></div>{(loadingMatches || isLoadingBets || isLoadingRound) && <RefreshCw className="h-5 w-5 animate-spin text-primary" />}</div>
               <RankingSummary scores={scores} isScoresHidden={isEffectivelyHidden} isRoundFinished={isRoundFinished} totalValidMatches={totalValidMatchesCount} />
             </section>
             
@@ -578,7 +577,7 @@ function HomeContent() {
                   isLocked={isLocked} 
                 />
               ) : (
-                <div className="h-96 flex flex-col items-center justify-center glass-card rounded-[2.5rem] border-dashed border-2 gap-4"><Loader2 className="h-10 w-10 animate-spin text-primary" /><span className="text-sm font-black italic uppercase text-muted-foreground">Buscando rodada atual...</span></div>
+                <div className="h-96 flex flex-col items-center justify-center glass-card rounded-[2.5rem] border-dashed border-2 gap-4"><Loader2 className="h-10 w-10 animate-spin text-primary" /><span className="text-base font-black italic uppercase text-muted-foreground">Buscando rodada atual...</span></div>
               )}
             </div>
           </div>
@@ -586,14 +585,14 @@ function HomeContent() {
 
         <div className={cn("absolute inset-0 overflow-y-auto no-scrollbar pt-4 pb-24 md:pb-8 animate-in fade-in duration-200", activeTab !== "palpites" && "hidden")}>
           <div className="max-w-7xl mx-auto px-4 space-y-6">
-            <div className="flex flex-col"><h3 className="font-black italic uppercase text-lg text-primary">{roundName || "Aguardando rodada..."}</h3><p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Comparativo em tempo real</p></div>
+            <div className="flex flex-col"><h3 className="font-black italic uppercase text-xl text-primary">{roundName || "Aguardando rodada..."}</h3><p className="text-xs text-muted-foreground font-bold tracking-widest uppercase">Comparativo em tempo real</p></div>
             <BettingTable roundName={roundName} matches={matches} predictions={predictions} setPrediction={updatePrediction} results={results} placaresOcultos={isEffectivelyHidden} currentPlayerId={user?.uid || ""} isAdmin={isAdminUser} allUsers={allUsers || []} isLocked={isLocked} />
           </div>
         </div>
 
         <div className={cn("absolute inset-0 overflow-y-auto no-scrollbar pt-4 pb-24 md:pb-8 animate-in fade-in duration-200", activeTab !== "ranking" && "hidden")}>
           <div className="max-w-7xl mx-auto px-4 space-y-6">
-            <div className="flex flex-col"><h3 className="font-black italic uppercase text-lg text-primary">Ranking Geral</h3><p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Classificação do Campeonato</p></div>
+            <div className="flex flex-col"><h3 className="font-black italic uppercase text-xl text-primary">Ranking Geral</h3><p className="text-xs text-muted-foreground font-bold tracking-widest uppercase">Classificação do Campeonato</p></div>
             <ChampionshipRanking 
               roundWinners={roundWinners} 
               setRoundWinners={setRoundWinners} 
@@ -610,18 +609,18 @@ function HomeContent() {
 
         <div className={cn("absolute inset-0 overflow-y-auto no-scrollbar pt-4 pb-24 md:pb-8 animate-in fade-in duration-200", activeTab !== "tabela" && "hidden")}>
           <div className="max-w-7xl mx-auto px-4 space-y-6">
-            <div className="flex flex-col"><h3 className="font-black italic uppercase text-lg text-primary">Tabela Oficial</h3><p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase">Classificação Série A</p></div>
+            <div className="flex flex-col"><h3 className="font-black italic uppercase text-xl text-primary">Tabela Oficial</h3><p className="text-xs text-muted-foreground font-bold tracking-widest uppercase">Classificação Série A</p></div>
             <LeagueStandings standings={standings} />
           </div>
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 glass-card border-t border-primary/10 rounded-none h-20 px-6 pb-2 md:hidden shrink-0">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 glass-card border-t border-primary/10 rounded-none h-22 px-6 pb-4 md:hidden shrink-0">
         <div className="max-w-md mx-auto h-full flex items-center justify-between">
-          <button onClick={() => setActiveTab("jogos")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "jogos" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Calendar className={cn("h-6 w-6", activeTab === "jogos" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">QUILA/JOGOS</span></button>
-          <button onClick={() => setActiveTab("palpites")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "palpites" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Radar className={cn("h-6 w-6", activeTab === "palpites" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Palpites</span></button>
-          <button onClick={() => setActiveTab("ranking")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "ranking" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Trophy className={cn("h-6 w-6", activeTab === "ranking" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Ranking</span></button>
-          <button onClick={() => setActiveTab("tabela")} className={cn("flex flex-col items-center gap-1 transition-all", activeTab === "tabela" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><LayoutDashboard className={cn("h-6 w-6", activeTab === "tabela" && "fill-current")} /><span className="text-[9px] font-black uppercase italic text-center">Tabela</span></button>
+          <button onClick={() => setActiveTab("jogos")} className={cn("flex flex-col items-center gap-1.5 transition-all", activeTab === "jogos" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Calendar className={cn("h-7 w-7", activeTab === "jogos" && "fill-current")} /><span className="text-[11px] font-black uppercase italic text-center">QUILA</span></button>
+          <button onClick={() => setActiveTab("palpites")} className={cn("flex flex-col items-center gap-1.5 transition-all", activeTab === "palpites" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Radar className={cn("h-7 w-7", activeTab === "palpites" && "fill-current")} /><span className="text-[11px] font-black uppercase italic text-center">Palpites</span></button>
+          <button onClick={() => setActiveTab("ranking")} className={cn("flex flex-col items-center gap-1.5 transition-all", activeTab === "ranking" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><Trophy className={cn("h-7 w-7", activeTab === "ranking" && "fill-current")} /><span className="text-[11px] font-black uppercase italic text-center">Ranking</span></button>
+          <button onClick={() => setActiveTab("tabela")} className={cn("flex flex-col items-center gap-1.5 transition-all", activeTab === "tabela" ? "text-primary scale-110" : "text-muted-foreground opacity-60")}><LayoutDashboard className={cn("h-7 w-7", activeTab === "tabela" && "fill-current")} /><span className="text-[11px] font-black uppercase italic text-center">Tabela</span></button>
         </div>
       </nav>
     </div>
