@@ -1,11 +1,10 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import Image from "next/image";
 import { Match, PlayerPredictions } from "@/lib/types";
 import { cn, getTeamAbrev } from "@/lib/utils";
 import { Camera, Share2, X } from "lucide-react";
+import { Logo } from "./logo";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -88,33 +87,7 @@ function RoundCardView({
           </div>
 
           <div className="relative z-10 flex justify-between items-center mb-2 border-b border-white/10 pb-3">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full shadow-xl border border-white/10 -rotate-6 bg-slate-900 flex items-center justify-center overflow-hidden transition-colors">
-                <div className="relative h-6 w-6 flex items-center justify-center">
-                  <Image
-                    src="/icons/android-chrome-512x512.png?v=3"
-                    alt="AlphaBet Logo"
-                    width={24}
-                    height={24}
-                    className="object-contain"
-                  />
-                </div>
-              </div>
-              <div className="h-8 flex flex-col justify-center">
-                <div
-                  className="text-[20px] font-black italic uppercase text-white tracking-tighter"
-                  style={{ lineHeight: "20px" }}
-                >
-                  AlphaBet
-                </div>
-                <div
-                  className="text-[9px] font-bold text-accent uppercase tracking-[0.3em] opacity-80 mt-1"
-                  style={{ lineHeight: "8px" }}
-                >
-                  League 2026
-                </div>
-              </div>
-            </div>
+            <Logo showText />
             <div className="bg-white/5 px-3 h-8 rounded border border-white/10 text-center">
               <span
                 className="text-[12px] font-black text-accent italic uppercase"

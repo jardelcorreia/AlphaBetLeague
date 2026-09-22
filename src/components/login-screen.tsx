@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Image from "next/image";
 import { useAuth, useFirestore } from "@/firebase";
 import { 
@@ -14,15 +14,13 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
 import { Label } from "./ui/label";
+import { Logo } from "./logo";
 import { 
-  Shield, 
   Loader2, 
   AlertCircle, 
   Lock, 
-  ChevronRight, 
   User,
   ArrowRight,
-  ChevronDown,
   Eye,
   EyeOff,
   Mail,
@@ -182,15 +180,7 @@ export function LoginScreen({ onPasswordChangeRequired, onPasswordChanged, force
 
         <div className="relative z-10 w-full max-w-md space-y-8 animate-in fade-in slide-in-from-top-4 duration-700">
           <div className="flex flex-col items-center text-center gap-4">
-            <div className="relative h-20 w-20 flex items-center justify-center">
-              <Trophy className="h-16 w-16 text-primary animate-float drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
-            </div>
-            <div className="space-y-1">
-              <h1 className="text-4xl font-black italic uppercase tracking-tighter text-primary leading-none">
-                AlphaBet <span className="text-foreground dark:text-white">League</span>
-              </h1>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.3em]">Brasileirão 2026</p>
-            </div>
+            <Logo size="xl" showText />
           </div>
 
           <Card className="glass-card border-none rounded-[2.5rem] shadow-2xl overflow-hidden ring-1 ring-white/10">

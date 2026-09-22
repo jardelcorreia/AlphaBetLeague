@@ -12,6 +12,7 @@ import { LeagueStandings } from "@/components/league-standings";
 import { ChampionshipRanking } from "@/components/championship-ranking";
 import { ProfileSettings } from "@/components/profile-settings";
 import { LoginScreen } from "@/components/login-screen";
+import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -76,7 +77,7 @@ function HomeContent() {
   const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState<TabType>("jogos");
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true); // Default dark for premium feel
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [currentRound, setCurrentRound] = useState<number | null>(null);
   const [systemCurrentRound, setSystemCurrentRound] = useState<number | null>(null);
@@ -194,7 +195,7 @@ function HomeContent() {
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme) {
       setDarkMode(savedTheme === "dark");
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    } else {
       setDarkMode(true);
     }
   }, []);
@@ -395,7 +396,7 @@ function HomeContent() {
         const matchIdx = parseInt(parts[parts.length - 1]);
         const bUserId = bet.userId;
         if (bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10) {
-          next[bUserId][matchIdx] = { homeScore: bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10 ? bet.homeScorePrediction?.toString() || "" : "", awayScore: bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10 ? bet.awayScorePrediction?.toString() || "" : "" };
+          next[bUserId][matchIdx] = { homeScore: bet.homeScorePrediction?.toString() || "", awayScore: bet.awayScorePrediction?.toString() || "" };
         }
       });
       return next;
@@ -478,26 +479,17 @@ function HomeContent() {
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <header className="shrink-0 glass-card border-none rounded-none shadow-md z-50">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="relative h-10 w-10 overflow-hidden rounded-full bg-transparent dark:bg-slate-900 p-2 flex items-center justify-center -rotate-6 transition-colors">
-              <div className="relative h-6 w-6">
-                <Image src="/icons/android-chrome-512x512.png?v=3" alt="AlphaBet Logo" fill className="object-contain" priority />
-              </div>
-            </div>
-            <div className="flex flex-col">
-              <h1 className="text-xl font-black italic uppercase tracking-tighter text-primary leading-none">AlphaBet</h1>
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Brasileirão 2026</span>
-            </div>
-          </div>
+          <Logo showText />
+          
           <div className="hidden md:flex items-center bg-muted/30 rounded-2xl p-1 gap-1 border border-primary/5">
             <button onClick={() => setActiveTab("jogos")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "jogos" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Calendar className="h-4 w-4" />QUILA/JOGOS</button>
             <button onClick={() => setActiveTab("palpites")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "palpites" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Radar className="h-4 w-4" />Palpites</button>
             <button onClick={() => setActiveTab("ranking")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "ranking" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><Trophy className="h-4 w-4" />Ranking</button>
             <button onClick={() => setActiveTab("tabela")} className={cn("px-5 py-2 rounded-xl text-xs font-black uppercase italic transition-all flex items-center gap-2", activeTab === "tabela" ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:bg-primary/5 hover:text-primary")}><LayoutDashboard className="h-4 w-4" />Tabela</button>
           </div>
+          
           <div className="flex items-center gap-2 md:gap-3">
              {isAdminUser && (<Link href="/admin"><Button variant="outline" size="sm" className="rounded-xl h-9 text-[11px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Shield className="h-4 w-4" />Painel ADM</Button></Link>)}
-             {isInstallable && (<Button variant="outline" size="sm" onClick={handleInstall} className="hidden lg:flex rounded-xl h-9 text-[11px] font-black uppercase italic gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white"><Download className="h-4 w-4" />Instalar App</Button>)}
              <Badge className="bg-primary/10 text-primary border-none text-[11px] font-black italic hidden sm:inline-flex px-3 h-7">#{currentRound || "?"}</Badge>
              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
