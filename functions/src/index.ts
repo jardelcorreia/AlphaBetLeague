@@ -123,7 +123,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
 
   const roundId = event.params.roundId;
   const roundNumber = parseInt(after.roundNumber);
-  if (!roundNumber) return;
+  if (!roundNumber || isNaN(roundNumber)) return;
 
   const db = admin.firestore();
   try {
@@ -142,21 +142,25 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
     const pointsMap: Record<string, number> = {};
     const exactScoresMap: Record<string, number> = {};
 
+    // Inicializa mapas para todos os usuários
+    users.forEach(u => {
+      pointsMap[u.id] = 0;
+      exactScoresMap[u.id] = 0;
+    });
+
     after.matches.forEach((match: any) => {
       if (match.status === 'cancelled') return;
 
-      users.forEach(u => {
-        if (!pointsMap[u.id]) pointsMap[u.id] = 0;
-        if (!exactScoresMap[u.id]) exactScoresMap[u.id] = 0;
+      const rh = match.homeScore, ra = match.awayScore;
+      if (rh === null || ra === null || rh === undefined || ra === undefined) return;
 
+      users.forEach(u => {
         const userBets = betsByUser[u.id] || [];
         const bet = userBets.find(b => b.matchId === match.id);
         if (!bet) return;
 
-        const rh = match.homeScore, ra = match.awayScore;
         const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
-
-        if (rh !== null && ra !== null && ph !== undefined && pa !== undefined) {
+        if (ph !== null && pa !== null && ph !== undefined && pa !== undefined) {
           if (ph === rh && pa === ra) {
             pointsMap[u.id] += 3;
             exactScoresMap[u.id] += 1;
@@ -168,7 +172,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       });
     });
 
-    // Verificação de rodada completa (10 jogos válidos finalizados)
+    // Verificação de rodada completa
     const validMatches = after.matches.slice(0, 10).filter((m: any) => m.status !== 'cancelled');
     const allFinished = validMatches.length > 0 && validMatches.every((m: any) => m.status === 'finished');
 
@@ -195,7 +199,6 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
 
     const roundIndex = roundNumber - 1;
     if (roundIndex >= 0 && roundIndex < 38) {
-      // Atualiza o histórico com os pontos atuais, e o vencedor apenas se a rodada acabou
       history[roundIndex] = { 
         ...history[roundIndex], 
         round: roundNumber, 

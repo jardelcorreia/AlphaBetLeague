@@ -75,17 +75,18 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
     const processedRoundsInHistory = new Set<number>();
     
-    // 1. Processa TODAS as rodadas do histórico que já possuem mapas de pontos salvos
+    // 1. Processa TODAS as rodadas do histórico que já possuem mapas de pontos salvos no banco
     historyForDisplay.forEach((rw) => {
-      // Somar pontos e exatos de qualquer rodada que tenha dados no mapa,
-      // mesmo que ainda não tenha vencedor oficial (rodada em andamento no servidor)
-      const ptsEntries = Object.entries(rw.pointsMap || {});
+      const pMap = rw.pointsMap || {};
+      const eMap = rw.exactScoresMap || {};
+      const ptsEntries = Object.entries(pMap);
+      
       if (ptsEntries.length > 0) {
         processedRoundsInHistory.add(rw.round);
         ptsEntries.forEach(([userId, pts]) => {
           if (stats[userId]) {
             stats[userId].points += (Number(pts) || 0);
-            stats[userId].exactScores += (Number(rw.exactScoresMap?.[userId]) || 0);
+            stats[userId].exactScores += (Number(eMap[userId]) || 0);
           }
         });
       }
@@ -117,11 +118,12 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
     });
 
     // 3. Adiciona pontos "vivos" da rodada exibida na tela APENAS se ela não estiver no histórico do banco
+    // Isso garante que enquanto o banco não atualiza, a visão local soma o que está na tela.
     if (currentRoundScores && currentRoundNumber && !processedRoundsInHistory.has(currentRoundNumber)) {
       currentRoundScores.forEach(s => {
         if (stats[s.id]) {
-          stats[s.id].points += s.points;
-          stats[s.id].exactScores += s.exactScores;
+          stats[s.id].points += (s.points || 0);
+          stats[s.id].exactScores += (s.exactScores || 0);
         }
       });
     }
@@ -132,7 +134,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       b.points - a.points || 
       b.exactScores - a.exactScores || 
       b.balance - a.balance || 
-      a.name.localeCompare(b.name)
+      (a.name || "").localeCompare(b.name || "")
     );
   }, [historyForDisplay, allUsers, currentRoundScores, currentRoundNumber]);
 
