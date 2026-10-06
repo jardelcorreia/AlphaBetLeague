@@ -23,64 +23,51 @@ interface ChampionshipRankingProps {
 }
 
 export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores, currentRoundNumber, isRoundFinished }: ChampionshipRankingProps) {
-  // Normaliza o histórico para sempre trabalhar com array, lidando com o bug de objetos no Firestore
   const historyForDisplay = useMemo(() => {
     let historyArray: ChampionshipWinner[] = [];
     
     if (Array.isArray(roundWinners)) {
       historyArray = [...roundWinners];
     } else if (roundWinners && typeof roundWinners === 'object') {
-      // Se for um objeto com chaves numéricas ("28", "29"), converte para array
       historyArray = Array.from({ length: 38 }, (_, i) => {
         const key = (i + 1).toString();
-        const altKey = i.toString();
-        return (roundWinners as any)[key] || (roundWinners as any)[altKey] || { round: i + 1, winners: "", value: 6 };
+        return (roundWinners as any)[key] || { round: i + 1, winners: "", value: 6 };
       });
     }
 
-    // Adiciona lógica virtual para a rodada atual se ela tiver scores parciais e não estiver no banco
     if (currentRoundScores && currentRoundNumber) {
       const idx = historyArray.findIndex(h => h.round === currentRoundNumber);
-      const existing = idx !== -1 ? historyArray[idx] : null;
-      
-      // Se não tem pontos no banco para esta rodada ou se queremos ver o "live"
-      if (!existing || !existing.pointsMap || Object.keys(existing.pointsMap).length === 0) {
-        const virtualEntry: ChampionshipWinner = {
-          round: currentRoundNumber,
-          winners: existing?.winners || "",
-          value: existing?.value || 6,
-          pointsMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.points])),
-          exactScoresMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.exactScores]))
-        };
-        if (idx !== -1) historyArray[idx] = virtualEntry;
-        else historyArray.push(virtualEntry);
-      }
+      const virtualEntry: ChampionshipWinner = {
+        round: currentRoundNumber,
+        winners: historyArray[idx]?.winners || "",
+        value: historyArray[idx]?.value || 6,
+        pointsMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.points])),
+        exactScoresMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.exactScores]))
+      };
+      if (idx !== -1) historyArray[idx] = virtualEntry;
+      else historyArray.push(virtualEntry);
     }
 
-    // Garante que o array tenha 38 posições e dados consistentes
     return Array.from({ length: 38 }, (_, i) => {
       const r = i + 1;
-      const found = historyArray.find(h => h.round === r);
-      return found || { round: r, winners: "", value: 6 };
+      return historyArray.find(h => h.round === r) || { round: r, winners: "", value: 6 };
     });
   }, [roundWinners, currentRoundScores, currentRoundNumber]);
 
   const overallStats = useMemo(() => {
     if (!allUsers || allUsers.length === 0) return [];
     
-    // Remove duplicatas de usuários
     const uniqueUsers = Array.from(new Map(allUsers.map(u => [u.id, u])).values());
     
     const stats: Record<string, PlayerOverallStats & { id: string; photoUrl?: string }> = Object.fromEntries(
       uniqueUsers.map((u) => [u.id, { id: u.id, name: u.username, wins: 0, draws: 0, points: 0, exactScores: 0, balance: 0, photoUrl: u.photoUrl }])
     );
 
-    // Soma pontos e estatísticas de todas as rodadas do histórico
-    historyForDisplay.forEach((rw) => {
+    historyForDisplay.forEach((rw, roundIdx) => {
       const pMap = rw.pointsMap || {};
       const eMap = rw.exactScoresMap || {};
+      const val = rw.value || 6;
       
-      // Soma pontos e placares exatos (Independente de ter vencedor)
       Object.entries(pMap).forEach(([uid, pts]) => {
         if (stats[uid]) {
           stats[uid].points += (Number(pts) || 0);
@@ -88,12 +75,22 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
         }
       });
 
-      // Lógica financeira e de vitórias (Apenas se tiver ganhadores definidos)
+      // Lógica de Vencedores Híbrida: Se não tem 'winners' salvo, mas tem pontos e a rodada é passada, calcula o vencedor
+      let winnerIds: string[] = [];
       if (rw.winners) {
         const winnerNames = rw.winners.split(", ").map(n => n.trim());
-        const winnerIds = winnerNames.map(name => uniqueUsers.find(u => u.username === name)?.id).filter(id => !!id) as string[];
-        const val = rw.value || 6;
+        winnerIds = winnerNames.map(name => uniqueUsers.find(u => u.username === name)?.id).filter(id => !!id) as string[];
+      } else if (Object.keys(pMap).length > 0 && (roundIdx + 1) < (currentRoundNumber || 0)) {
+        // Fallback: Calcula o vencedor dinamicamente para rodadas passadas sem 'winners' gravado
+        const maxPts = Math.max(...Object.values(pMap).map(p => Number(p)), 0);
+        if (maxPts > 0) {
+          const playersWithMax = uniqueUsers.filter(u => Number(pMap[u.id] || 0) === maxPts);
+          const maxExs = Math.max(...playersWithMax.map(u => Number(eMap[u.id] || 0)), 0);
+          winnerIds = playersWithMax.filter(u => Number(eMap[u.id] || 0) === maxExs).map(u => u.id);
+        }
+      }
 
+      if (winnerIds.length > 0) {
         if (winnerIds.length === 1) {
           const wid = winnerIds[0];
           if (stats[wid]) { 
@@ -101,7 +98,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
             stats[wid].balance += val * (uniqueUsers.length - 1); 
           }
           uniqueUsers.forEach(u => { if (u.id !== wid && stats[u.id]) stats[u.id].balance -= val; });
-        } else if (winnerIds.length > 1) {
+        } else {
           winnerIds.forEach(wid => { if (stats[wid]) stats[wid].draws += 1; });
           const losers = uniqueUsers.filter(u => !winnerIds.includes(u.id));
           const prize = (losers.length * val) / winnerIds.length;
@@ -117,7 +114,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       b.wins - a.wins || 
       (a.name || "").localeCompare(b.name || "")
     );
-  }, [historyForDisplay, allUsers]);
+  }, [historyForDisplay, allUsers, currentRoundNumber]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

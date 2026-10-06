@@ -100,7 +100,6 @@ async function consolidateRoundPoints(roundId: string) {
   const roundNumber = parseInt(roundData.roundNumber);
   if (!roundNumber || isNaN(roundNumber)) return;
 
-  // Busca todos os palpites da rodada
   const betsSnapshot = await db.collection(`rounds/${roundId}/bets`).get();
   const betsByUser: Record<string, any[]> = {};
   betsSnapshot.forEach(doc => {
@@ -109,7 +108,6 @@ async function consolidateRoundPoints(roundId: string) {
     betsByUser[bet.userId].push(bet);
   });
 
-  // Busca todos os usuários para garantir que todos entrem no mapa
   const usersSnapshot = await db.collection("users").get();
   const users: any[] = [];
   usersSnapshot.forEach(doc => users.push(doc.data()));
@@ -122,7 +120,6 @@ async function consolidateRoundPoints(roundId: string) {
     exactScoresMap[u.id] = 0;
   });
 
-  // Cálculo de pontos para cada jogo
   roundData.matches.forEach((match: any) => {
     if (match.status === 'cancelled') return;
     const rh = match.homeScore, ra = match.awayScore;
@@ -144,7 +141,6 @@ async function consolidateRoundPoints(roundId: string) {
     });
   });
 
-  // Verifica se a rodada está finalizada (todos os 10 jogos principais terminados ou cancelados)
   const mainMatches = roundData.matches.slice(0, 10);
   const allFinished = mainMatches.every((m: any) => m.status === 'finished' || m.status === 'cancelled');
 
@@ -159,33 +155,26 @@ async function consolidateRoundPoints(roundId: string) {
     }
   }
 
-  // Persistência no documento Championship
   const settingsRef = db.collection("app_settings").doc("championship");
   const settingsDoc = await settingsRef.get();
-  let historyData = settingsDoc.exists ? settingsDoc.data()?.history : null;
+  const existingHistory = settingsDoc.exists ? settingsDoc.data()?.history : [];
+  
+  let history: any[] = Array.from({ length: 38 }, (_, i) => ({ 
+    round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} 
+  }));
 
-  // Normaliza o histórico para array caso esteja vindo como objeto do Firestore
-  let history: any[] = [];
-  if (Array.isArray(historyData)) {
-    history = historyData;
-  } else if (historyData && typeof historyData === 'object') {
-    history = Array.from({ length: 38 }, (_, i) => historyData[i + 1] || historyData[i] || { round: i + 1, winners: "", value: 6 });
-  }
-
-  // Se o histórico ainda estiver vazio, inicializa
-  if (history.length === 0) {
-    history = Array.from({ length: 38 }, (_, i) => ({ 
-      round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} 
-    }));
+  if (Array.isArray(existingHistory)) {
+    existingHistory.forEach(h => {
+      if (h && h.round) history[h.round - 1] = h;
+    });
   }
 
   const roundIndex = roundNumber - 1;
   if (roundIndex >= 0 && roundIndex < 38) {
-    const existingEntry = history[roundIndex] || {};
     history[roundIndex] = {
-      ...existingEntry,
+      ...history[roundIndex],
       round: roundNumber,
-      winners: winnerNames || existingEntry.winners || "",
+      winners: winnerNames || history[roundIndex].winners || "",
       pointsMap: pointsMap,
       exactScoresMap: exactScoresMap
     };
@@ -195,7 +184,7 @@ async function consolidateRoundPoints(roundId: string) {
       dateUpdated: admin.firestore.FieldValue.serverTimestamp() 
     }, { merge: true });
     
-    console.log(`consolidateRoundPoints: Rodada ${roundNumber} processada. Winners: "${winnerNames}"`);
+    console.log(`consolidateRoundPoints: Rodada ${roundNumber} atualizada.`);
   }
 }
 

@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -33,7 +34,8 @@ import {
   Zap,
   CheckCircle2,
   Save,
-  CloudDownload
+  CloudDownload,
+  Gavel
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getTeamAbrev, cn, determineMatchValidity } from "@/lib/utils";
@@ -53,6 +55,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isConsolidating, setIsConsolidating] = useState(false);
   const [placaresOcultos, setPlacaresOcultos] = useState(true);
   const [roundName, setRoundName] = useState("");
 
@@ -142,16 +145,21 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!isLoadingSettings) {
-      if (settingsData?.history && Array.isArray(settingsData.history)) {
+      if (settingsData?.history) {
+        let historyArray: ChampionshipWinner[] = [];
+        if (Array.isArray(settingsData.history)) {
+          historyArray = settingsData.history;
+        } else {
+          historyArray = Array.from({ length: 38 }, (_, i) => {
+            const key = (i + 1).toString();
+            return (settingsData.history as any)[key] || { round: i + 1, winners: "", value: 6 };
+          });
+        }
+
         const fullHistory = Array.from({ length: 38 }, (_, i) => {
-          const existing = settingsData.history.find((h: any) => h.round === i + 1);
-          return {
-            round: i + 1,
-            winners: existing?.winners || "",
-            value: existing?.value || (i < 19 ? 6 : 6),
-            pointsMap: existing?.pointsMap || {},
-            exactScoresMap: existing?.exactScoresMap || {}
-          };
+          const r = i + 1;
+          const existing = historyArray.find(h => h.round === r);
+          return existing || { round: r, winners: "", value: 6 };
         });
         setRoundWinners(fullHistory);
       }
@@ -184,47 +192,36 @@ export default function AdminPage() {
     }
 
     loadApiMatches();
-    const interval = setInterval(loadApiMatches, 60000);
-    return () => clearInterval(interval);
   }, [currentRound]);
 
-  // Sincronização e Fusão Híbrida para o Administrador
   useEffect(() => {
     if (apiMatches.length === 0) return;
-    
-    // Mesclamos os dados da API com os Overrides do Firestore
     let merged = apiMatches.map(m => {
       if (roundData?.matches && Array.isArray(roundData.matches)) {
         const override = roundData.matches.find((o: any) => o && o.id === m.id);
-        if (override) {
-          // Se for manual, usamos os dados salvos. Caso contrário, usamos os dados frescos da API.
-          if (override.isManual === true) {
-            return {
-              ...m,
-              homeScore: (override.homeScore !== undefined && override.homeScore !== null) ? override.homeScore : m.homeScore,
-              awayScore: (override.awayScore !== undefined && override.awayScore !== null) ? override.awayScore : m.awayScore,
-              status: override.status || m.status,
-              isManual: true
-            };
-          }
+        if (override && override.isManual === true) {
+          return {
+            ...m,
+            homeScore: override.homeScore ?? m.homeScore,
+            awayScore: override.awayScore ?? m.awayScore,
+            status: override.status || m.status,
+            isManual: true
+          };
         }
       }
       return m;
     });
-
     setMatches(determineMatchValidity(merged));
   }, [apiMatches, roundData?.matches]);
 
   const persistRoundChanges = async (updatedMatches: Match[]) => {
     if (!currentRound || !roundId) return;
-    
-    // Filtramos apenas o que é estritamente necessário para o override manual
     const fullMatchList = updatedMatches.map(m => ({
       id: m.id,
       homeTeam: m.homeTeam,
       awayTeam: m.awayTeam,
-      homeScore: (m.homeScore !== undefined && m.homeScore !== null) ? m.homeScore : null,
-      awayScore: (m.awayScore !== undefined && m.awayScore !== null) ? m.awayScore : null,
+      homeScore: m.homeScore ?? null,
+      awayScore: m.awayScore ?? null,
       status: m.status || 'upcoming',
       utcDate: m.utcDate,
       isManual: m.isManual || false,
@@ -238,13 +235,65 @@ export default function AdminPage() {
         roundNumber: currentRound,
         name: roundName || `Rodada ${currentRound}`,
         isScoresHidden: placaresOcultos,
-        autoRevealProcessed: roundData?.autoRevealProcessed || false,
         matches: fullMatchList,
         dateUpdated: serverTimestamp(),
         dateCreated: roundData?.dateCreated || serverTimestamp(),
       }, { merge: true });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Erro ao Persistir", description: err.message });
+      toast({ variant: "destructive", title: "Erro", description: err.message });
+    }
+  };
+
+  const handleManualConsolidate = async () => {
+    if (!currentRound || !allUsers || !allBets || matches.length === 0) return;
+    setIsConsolidating(true);
+    try {
+      const pointsMap: Record<string, number> = {};
+      const exactScoresMap: Record<string, number> = {};
+      
+      allUsers.forEach(u => { pointsMap[u.id] = 0; exactScoresMap[u.id] = 0; });
+
+      matches.forEach(m => {
+        if (m.status === 'cancelled') return;
+        const rh = m.homeScore, ra = m.awayScore;
+        if (rh === null || ra === null || rh === undefined || ra === undefined) return;
+
+        allUsers.forEach(u => {
+          const bet = allBets.find(b => b.userId === u.id && b.matchId === m.id);
+          if (!bet) return;
+          const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
+          if (ph !== null && pa !== null) {
+            if (ph === rh && pa === ra) { pointsMap[u.id] += 3; exactScoresMap[u.id] += 1; }
+            else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) { pointsMap[u.id] += 1; }
+          }
+        });
+      });
+
+      const maxPts = Math.max(...Object.values(pointsMap), 0);
+      let winnerNames = "";
+      if (maxPts > 0) {
+        const playersWithMax = allUsers.filter(u => pointsMap[u.id] === maxPts);
+        const maxExs = Math.max(...playersWithMax.map(u => exactScoresMap[u.id]), 0);
+        winnerNames = playersWithMax.filter(u => exactScoresMap[u.id] === maxExs).map(u => u.username || u.id).join(", ");
+      }
+
+      const historyIdx = currentRound - 1;
+      const nextWinners = [...roundWinners];
+      nextWinners[historyIdx] = {
+        ...nextWinners[historyIdx],
+        winners: winnerNames,
+        pointsMap,
+        exactScoresMap
+      };
+
+      const settingsRef = doc(db, "app_settings", "championship");
+      await setDoc(settingsRef, { history: nextWinners, dateUpdated: serverTimestamp() }, { merge: true });
+      setRoundWinners(nextWinners);
+      toast({ title: "Rodada Consolidada!", description: `Vencedores: ${winnerNames || "Nenhum"}` });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Erro", description: error.message });
+    } finally {
+      setIsConsolidating(false);
     }
   };
 
@@ -252,13 +301,12 @@ export default function AdminPage() {
     if (apiMatches.length === 0 || !currentRound || !roundId) return;
     setIsRestoring(true);
     try {
-      // Forçamos a limpeza da flag isManual de todos os jogos para voltar ao modo API puro
       const cleanApiMatches = apiMatches.map(m => ({ ...m, isManual: false }));
       const validApiMatches = determineMatchValidity(cleanApiMatches);
       await persistRoundChanges(validApiMatches);
-      toast({ title: "Dados Recriados!", description: "A rodada foi restaurada com as informações da API." });
+      toast({ title: "Dados Recriados!" });
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Erro", description: error.message || "Falha ao recriar rodada." });
+      toast({ variant: "destructive", title: "Erro", description: error.message });
     } finally {
       setIsRestoring(false);
     }
@@ -276,35 +324,17 @@ export default function AdminPage() {
     const nextMatches = matches.map((m, i) => i === idx ? { ...apiMatch, isManual: false } : m);
     setMatches(nextMatches);
     persistRoundChanges(nextMatches);
-    toast({ title: "Modo API Ativado", description: "O jogo agora segue os dados automáticos." });
   };
 
   const handleSaveLeagueSettings = async () => {
     if (!hasLoadedHistory || isLoadingSettings) return;
     setSaving(true);
     try {
-      const historyToSave = roundWinners.map(rw => ({
-        round: rw.round || 0,
-        winners: rw.winners || "",
-        value: Number(rw.value) || 0,
-        pointsMap: rw.pointsMap || {},
-        exactScoresMap: rw.exactScoresMap || {}
-      }));
-
       const settingsRef = doc(db, "app_settings", "championship");
-      await setDoc(settingsRef, {
-        history: historyToSave,
-        dateUpdated: serverTimestamp(),
-      }, { merge: true });
-      
-      toast({ title: "Configurações Salvas!", description: "Valores e vencedores sincronizados com sucesso." });
+      await setDoc(settingsRef, { history: roundWinners, dateUpdated: serverTimestamp() }, { merge: true });
+      toast({ title: "Configurações Salvas!" });
     } catch (error: any) {
-      console.error("Erro ao salvar financeiro:", error);
-      toast({ 
-        variant: "destructive", 
-        title: "Erro no Salvamento", 
-        description: error.message || "Ocorreu uma exceção ao tentar persistir os dados." 
-      });
+      toast({ variant: "destructive", title: "Erro", description: error.message });
     } finally {
       setSaving(false);
     }
@@ -316,7 +346,6 @@ export default function AdminPage() {
       value: rw.round <= 19 ? turn1Value : turn2Value
     }));
     setRoundWinners(nextWinners);
-    toast({ title: "Valores Aplicados", description: "Clique em salvar para confirmar." });
   };
 
   const updateRoundWinnerValue = (roundIdx: number, val: number) => {
@@ -327,26 +356,12 @@ export default function AdminPage() {
     if (!roundId) return;
     const newState = !placaresOcultos;
     setPlacaresOcultos(newState);
-    
     try {
       const roundRef = doc(db, "rounds", roundId);
-      const updateData: any = {
-        isScoresHidden: newState,
-        dateUpdated: serverTimestamp(),
-      };
-
-      if (newState === false) {
-        updateData.autoRevealProcessed = true;
-      }
-
-      await setDoc(roundRef, updateData, { merge: true });
-      
-      toast({ 
-        title: newState ? "Palpites Ocultos" : "Palpites Revelados", 
-        description: newState ? "Ninguém vê os palpites alheios." : "Todos agora veem tudo." 
-      });
+      await setDoc(roundRef, { isScoresHidden: newState, dateUpdated: serverTimestamp() }, { merge: true });
+      toast({ title: newState ? "Palpites Ocultos" : "Palpites Revelados" });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Erro na Visibilidade", description: err.message });
+      toast({ variant: "destructive", title: "Erro", description: err.message });
     }
   };
 
@@ -354,7 +369,7 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-[10px] font-black uppercase italic text-muted-foreground tracking-widest">Autenticando Alpha Perfil...</p>
+        <p className="text-[10px] font-black uppercase italic text-muted-foreground tracking-widest">Painel Alpha...</p>
       </div>
     );
   }
@@ -374,7 +389,7 @@ export default function AdminPage() {
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="h-7 px-3 rounded-lg border-primary/10 bg-primary/5 text-primary text-[8px] font-black uppercase italic gap-1.5">
-              <CheckCircle2 className="h-2.5 w-2.5" /> Automação Ativa
+              <CheckCircle2 className="h-2.5 w-2.5" /> Alpha Sync
             </Badge>
           </div>
         </div>
@@ -386,56 +401,43 @@ export default function AdminPage() {
             <TabsTrigger value="financeiro" className="rounded-lg font-black italic uppercase text-[8px] gap-2 data-[state=active]:bg-primary data-[state=active]:text-white"><DollarSign className="h-3 w-3" />Financeiro Liga</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="rodada" className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <TabsContent value="rodada" className="space-y-4">
             <section className="flex flex-col sm:flex-row items-center justify-between bg-primary/5 p-3 rounded-xl border border-primary/10 gap-3">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={() => setCurrentRound(prev => Math.max(1, prev! - 1))} className="h-7 w-7 rounded-lg border-primary/10"><ChevronLeft className="h-4 w-4" /></Button>
+                <Button variant="outline" size="icon" onClick={() => setCurrentRound(prev => Math.max(1, prev! - 1))} className="h-7 w-7 rounded-lg"><ChevronLeft className="h-4 w-4" /></Button>
                 <div className="text-center min-w-[50px]"><h2 className="text-sm font-black italic uppercase text-primary leading-tight">#{currentRound || "?"}</h2></div>
-                <Button variant="outline" size="icon" onClick={() => setCurrentRound(prev => Math.min(38, prev! + 1))} className="h-7 w-7 rounded-lg border-primary/10"><ChevronRight className="h-4 w-4" /></Button>
+                <Button variant="outline" size="icon" onClick={() => setCurrentRound(prev => Math.min(38, prev! + 1))} className="h-7 w-7 rounded-lg"><ChevronRight className="h-4 w-4" /></Button>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button 
                   variant="outline" 
                   size="sm" 
+                  onClick={handleManualConsolidate}
+                  disabled={isConsolidating}
+                  className="rounded-lg h-7 px-3 gap-2 font-black italic uppercase text-[8px] border-secondary/20 text-secondary hover:bg-secondary/5"
+                >
+                  {isConsolidating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Gavel className="h-3 w-3" />}
+                  Consolidar Rodada
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
                   onClick={handleForceApiSync} 
-                  disabled={isRestoring || apiMatches.length === 0}
+                  disabled={isRestoring}
                   className="rounded-lg h-7 px-3 gap-2 font-black italic uppercase text-[8px] border-primary/20 text-primary hover:bg-primary/5"
                 >
                   {isRestoring ? <Loader2 className="h-3 w-3 animate-spin" /> : <CloudDownload className="h-3 w-3" />}
-                  Restaurar Dados API
+                  Restaurar API
                 </Button>
-                <RoundCardDialog 
-                  roundName={roundName}
-                  matches={matches}
-                  predictions={predictions}
-                  allUsers={allUsers || []}
-                  buttonLabel="Gerar Card"
-                  triggerClassName="h-7 px-3 text-[8px]"
-                />
-                <Button variant={placaresOcultos ? "destructive" : "secondary"} onClick={toggleVisibility} size="sm" className="rounded-lg h-7 px-4 gap-2 font-black italic uppercase text-[8px] shadow-md transition-all active:scale-95">{placaresOcultos ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}{placaresOcultos ? "Revelar Palpites" : "Ocultar Palpites"}</Button>
+                <Button variant={placaresOcultos ? "destructive" : "secondary"} onClick={toggleVisibility} size="sm" className="rounded-lg h-7 px-4 gap-2 font-black italic uppercase text-[8px] shadow-md transition-all active:scale-95">{placaresOcultos ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}{placaresOcultos ? "Revelar" : "Ocultar"}</Button>
               </div>
             </section>
-
-            {!roundData && !loading && (
-              <div className="bg-amber-500/10 p-4 rounded-xl border border-amber-500/20 flex flex-col gap-2">
-                <p className="text-[10px] font-black uppercase text-amber-600 leading-tight">Rodada não encontrada no Banco de Dados</p>
-                <p className="text-[9px] font-medium text-amber-700/80">Esta rodada pode ter sido excluída. Use o botão "Restaurar Dados API" acima para recriá-la com as informações oficiais.</p>
-              </div>
-            )}
-
-            <div className="bg-primary/10 p-3 rounded-lg flex items-center gap-3 border border-primary/20">
-              <Zap className="h-5 w-5 text-primary shrink-0 animate-pulse" />
-              <div className="flex flex-col">
-                <p className="text-[9px] font-black uppercase text-primary leading-none">Auto-Save Ativado</p>
-                <p className="text-[8px] font-bold text-muted-foreground uppercase leading-tight mt-1">Todas as alterações de placar ou status são salvas instantaneamente e o ranking recalculado no servidor.</p>
-              </div>
-            </div>
 
             <section className="space-y-1">
               {loading ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-4">
                   <Loader2 className="h-8 w-8 animate-spin text-primary opacity-20" />
-                  <span className="text-[10px] font-black uppercase italic text-muted-foreground">Sincronizando com API...</span>
+                  <span className="text-[10px] font-black uppercase italic text-muted-foreground">Sincronizando...</span>
                 </div>
               ) : matches.length > 0 ? (
                 matches.map((match, idx) => (
@@ -448,7 +450,7 @@ export default function AdminPage() {
                             type="number" 
                             value={match.homeScore ?? ""} 
                             onChange={(e) => updateMatch(idx, { homeScore: e.target.value === "" ? undefined : parseInt(e.target.value) })} 
-                            className="w-6 h-6 text-center rounded font-black text-xs bg-background border border-primary/10 focus:outline-none focus:ring-1 focus:ring-primary/20" 
+                            className="w-6 h-6 text-center rounded font-black text-xs bg-background border border-primary/10" 
                             placeholder="-" 
                           />
                           <span className="font-black text-primary/20 italic text-[9px]">X</span>
@@ -456,7 +458,7 @@ export default function AdminPage() {
                             type="number" 
                             value={match.awayScore ?? ""} 
                             onChange={(e) => updateMatch(idx, { awayScore: e.target.value === "" ? undefined : parseInt(e.target.value) })} 
-                            className="w-6 h-6 text-center rounded font-black text-xs bg-background border border-primary/10 focus:outline-none focus:ring-1 focus:ring-primary/20" 
+                            className="w-6 h-6 text-center rounded font-black text-xs bg-background border border-primary/10" 
                             placeholder="-" 
                           />
                         </div>
@@ -465,7 +467,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Select value={match.status} onValueChange={(val: MatchStatus) => updateMatch(idx, { status: val })}>
                           <SelectTrigger className="h-7 w-20 rounded-lg font-black italic uppercase text-[7px] border-primary/5 bg-background"><SelectValue /></SelectTrigger>
-                          <SelectContent className="rounded-xl">
+                          <SelectContent>
                             <SelectItem value="upcoming" className="text-[8px] font-black italic uppercase">Agendado</SelectItem>
                             <SelectItem value="live" className="text-[8px] font-black italic uppercase text-destructive">Ao Vivo</SelectItem>
                             <SelectItem value="finished" className="text-[8px] font-black italic uppercase text-secondary">Fim</SelectItem>
@@ -473,14 +475,7 @@ export default function AdminPage() {
                           </SelectContent>
                         </Select>
                         {match.isManual ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" onClick={() => resetMatch(idx)} className="h-7 w-7 text-destructive hover:bg-destructive/10"><Trash2 className="h-3 w-3" /></Button>
-                              </TooltipTrigger>
-                              <TooltipContent><p className="text-[10px] font-bold">Voltar para Modo API</p></TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <Button variant="ghost" size="icon" onClick={() => resetMatch(idx)} className="h-7 w-7 text-destructive hover:bg-destructive/10"><Trash2 className="h-3 w-3" /></Button>
                         ) : (
                           <div className="w-7 flex justify-center"><RefreshCw className="h-2.5 w-2.5 text-primary/20" /></div>
                         )}
@@ -490,17 +485,17 @@ export default function AdminPage() {
                 ))
               ) : (
                 <div className="py-20 text-center glass-card rounded-2xl border-dashed border-2 border-primary/10">
-                   <p className="text-[10px] font-black uppercase text-muted-foreground">Nenhum jogo encontrado para esta rodada.</p>
+                   <p className="text-[10px] font-black uppercase text-muted-foreground">Vazio.</p>
                 </div>
               )}
             </section>
           </TabsContent>
 
-          <TabsContent value="financeiro" className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <TabsContent value="financeiro" className="space-y-4">
             <Card className="glass-card border-none rounded-2xl overflow-hidden">
               <CardHeader className="bg-primary/5 p-3 flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center gap-2"><Settings2 className="h-3.5 w-3.5 text-primary" /><CardTitle className="text-[9px] font-black italic uppercase text-primary">Configurações Liga</CardTitle></div>
-                <Button onClick={handleSaveLeagueSettings} disabled={saving || isLoadingSettings} size="sm" className="rounded-lg h-7 px-3 font-black italic uppercase gap-2 text-[8px]">
+                <Button onClick={handleSaveLeagueSettings} disabled={saving} size="sm" className="rounded-lg h-7 px-3 font-black italic uppercase gap-2 text-[8px]">
                   {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Salvar Valores
                 </Button>
               </CardHeader>
@@ -509,11 +504,8 @@ export default function AdminPage() {
                   <div className="space-y-1"><label className="text-[8px] font-black uppercase text-muted-foreground tracking-widest">Turno 1</label><div className="flex items-center gap-1.5 bg-muted/20 p-2 rounded-xl border border-primary/5"><span className="text-[10px] font-black text-primary/40">R$</span><input type="number" value={turn1Value} onChange={(e) => setTurn1Value(parseFloat(e.target.value) || 0)} className="border-none bg-transparent font-black text-base focus:outline-none w-full" /></div></div>
                   <div className="space-y-1"><label className="text-[8px] font-black uppercase text-muted-foreground tracking-widest">Turno 2</label><div className="flex items-center gap-1.5 bg-muted/20 p-2 rounded-xl border border-primary/5"><span className="text-[10px] font-black text-primary/40">R$</span><input type="number" value={turn2Value} onChange={(e) => setTurn2Value(parseFloat(e.target.value) || 0)} className="border-none bg-transparent font-black text-base focus:outline-none w-full" /></div></div>
                 </div>
-                <Button onClick={applyTurnValues} variant="outline" className="w-full rounded-xl h-8 font-black italic uppercase gap-2 text-[8px] border-primary/10 text-primary hover:bg-primary/5"><RefreshCw className="h-3 w-3" />Atualizar 38 Rodadas</Button>
+                <Button onClick={applyTurnValues} variant="outline" className="w-full rounded-xl h-8 font-black italic uppercase gap-2 text-[8px] border-primary/10 text-primary hover:bg-primary/5"><RefreshCw className="h-3 w-3" />Atualizar Tudo</Button>
                 <div className="pt-3 border-t border-primary/5">
-                  {isLoadingSettings && !hasLoadedHistory ? (
-                    <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-                  ) : (
                     <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5">
                       {roundWinners.map((rw, idx) => (
                         <div key={idx} className="bg-muted/30 p-1.5 rounded-lg border border-primary/5 flex flex-col items-center gap-0.5">
@@ -522,7 +514,6 @@ export default function AdminPage() {
                         </div>
                       ))}
                     </div>
-                  )}
                 </div>
               </CardContent>
             </Card>
