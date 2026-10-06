@@ -11,7 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./
 import { cn } from "@/lib/utils";
 
 interface ChampionshipRankingProps {
-  roundWinners: ChampionshipWinner[];
+  roundWinners: ChampionshipWinner[] | Record<string, ChampionshipWinner>;
   setRoundWinners: React.Dispatch<React.SetStateAction<ChampionshipWinner[]>>;
   allUsers: any[];
   isAdmin?: boolean;
@@ -23,65 +23,72 @@ interface ChampionshipRankingProps {
 }
 
 export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores, currentRoundNumber, isRoundFinished }: ChampionshipRankingProps) {
-  // Constrói o histórico completo de 38 rodadas
+  // Normaliza o histórico para sempre trabalhar com array, lidando com o bug de objetos no Firestore
   const historyForDisplay = useMemo(() => {
-    const history = [...roundWinners];
-    // Adiciona lógica virtual para a rodada atual se estiver finalizada mas não salva no banco
-    if (currentRoundScores && currentRoundNumber && isRoundFinished) {
-      const idx = history.findIndex(h => h.round === currentRoundNumber);
-      const existing = idx !== -1 ? history[idx] : null;
-      if (!existing || !existing.winners) {
-        const maxPts = Math.max(...currentRoundScores.map(s => s.points), 0);
-        if (maxPts > 0) {
-          const topPlayers = currentRoundScores.filter(s => s.points === maxPts);
-          const maxExs = Math.max(...topPlayers.map(s => s.exactScores), 0);
-          const winners = topPlayers.filter(s => s.exactScores === maxExs);
-          const winnerNames = winners.map(w => w.name).join(", ");
-          const virtualEntry: ChampionshipWinner = {
-            round: currentRoundNumber,
-            winners: winnerNames,
-            value: existing?.value || 6,
-            pointsMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.points])),
-            exactScoresMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.exactScores]))
-          };
-          if (idx !== -1) history[idx] = virtualEntry;
-        }
+    let historyArray: ChampionshipWinner[] = [];
+    
+    if (Array.isArray(roundWinners)) {
+      historyArray = [...roundWinners];
+    } else if (roundWinners && typeof roundWinners === 'object') {
+      // Se for um objeto com chaves numéricas ("28", "29"), converte para array
+      historyArray = Array.from({ length: 38 }, (_, i) => {
+        const key = (i + 1).toString();
+        const altKey = i.toString();
+        return (roundWinners as any)[key] || (roundWinners as any)[altKey] || { round: i + 1, winners: "", value: 6 };
+      });
+    }
+
+    // Adiciona lógica virtual para a rodada atual se ela tiver scores parciais e não estiver no banco
+    if (currentRoundScores && currentRoundNumber) {
+      const idx = historyArray.findIndex(h => h.round === currentRoundNumber);
+      const existing = idx !== -1 ? historyArray[idx] : null;
+      
+      // Se não tem pontos no banco para esta rodada ou se queremos ver o "live"
+      if (!existing || !existing.pointsMap || Object.keys(existing.pointsMap).length === 0) {
+        const virtualEntry: ChampionshipWinner = {
+          round: currentRoundNumber,
+          winners: existing?.winners || "",
+          value: existing?.value || 6,
+          pointsMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.points])),
+          exactScoresMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.exactScores]))
+        };
+        if (idx !== -1) historyArray[idx] = virtualEntry;
+        else historyArray.push(virtualEntry);
       }
     }
+
+    // Garante que o array tenha 38 posições e dados consistentes
     return Array.from({ length: 38 }, (_, i) => {
       const r = i + 1;
-      const found = history.find(h => h.round === r);
+      const found = historyArray.find(h => h.round === r);
       return found || { round: r, winners: "", value: 6 };
     });
-  }, [roundWinners, currentRoundScores, currentRoundNumber, isRoundFinished]);
+  }, [roundWinners, currentRoundScores, currentRoundNumber]);
 
   const overallStats = useMemo(() => {
     if (!allUsers || allUsers.length === 0) return [];
+    
+    // Remove duplicatas de usuários
     const uniqueUsers = Array.from(new Map(allUsers.map(u => [u.id, u])).values());
     
     const stats: Record<string, PlayerOverallStats & { id: string; photoUrl?: string }> = Object.fromEntries(
       uniqueUsers.map((u) => [u.id, { id: u.id, name: u.username, wins: 0, draws: 0, points: 0, exactScores: 0, balance: 0, photoUrl: u.photoUrl }])
     );
 
-    const processedRounds = new Set<number>();
-    
-    // Soma pontos de todas as rodadas que têm mapas de pontos no banco
+    // Soma pontos e estatísticas de todas as rodadas do histórico
     historyForDisplay.forEach((rw) => {
       const pMap = rw.pointsMap || {};
       const eMap = rw.exactScoresMap || {};
-      const entries = Object.entries(pMap);
       
-      if (entries.length > 0) {
-        processedRounds.add(rw.round);
-        entries.forEach(([uid, pts]) => {
-          if (stats[uid]) {
-            stats[uid].points += (Number(pts) || 0);
-            stats[uid].exactScores += (Number(eMap[uid]) || 0);
-          }
-        });
-      }
+      // Soma pontos e placares exatos (Independente de ter vencedor)
+      Object.entries(pMap).forEach(([uid, pts]) => {
+        if (stats[uid]) {
+          stats[uid].points += (Number(pts) || 0);
+          stats[uid].exactScores += (Number(eMap[uid]) || 0);
+        }
+      });
 
-      // Lógica financeira e de vitórias (apenas se tiver ganhadores definidos)
+      // Lógica financeira e de vitórias (Apenas se tiver ganhadores definidos)
       if (rw.winners) {
         const winnerNames = rw.winners.split(", ").map(n => n.trim());
         const winnerIds = winnerNames.map(name => uniqueUsers.find(u => u.username === name)?.id).filter(id => !!id) as string[];
@@ -89,7 +96,10 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
         if (winnerIds.length === 1) {
           const wid = winnerIds[0];
-          if (stats[wid]) { stats[wid].wins += 1; stats[wid].balance += val * (uniqueUsers.length - 1); }
+          if (stats[wid]) { 
+            stats[wid].wins += 1; 
+            stats[wid].balance += val * (uniqueUsers.length - 1); 
+          }
           uniqueUsers.forEach(u => { if (u.id !== wid && stats[u.id]) stats[u.id].balance -= val; });
         } else if (winnerIds.length > 1) {
           winnerIds.forEach(wid => { if (stats[wid]) stats[wid].draws += 1; });
@@ -101,18 +111,13 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       }
     });
 
-    // Se a rodada selecionada na tela não estiver no histórico do banco, soma ela "ao vivo"
-    if (currentRoundScores && currentRoundNumber && !processedRounds.has(currentRoundNumber)) {
-      currentRoundScores.forEach(s => {
-        if (stats[s.id]) {
-          stats[s.id].points += (s.points || 0);
-          stats[s.id].exactScores += (s.exactScores || 0);
-        }
-      });
-    }
-
-    return Object.values(stats).sort((a, b) => b.points - a.points || b.exactScores - a.exactScores || b.wins - a.wins || (a.name || "").localeCompare(b.name || ""));
-  }, [historyForDisplay, allUsers, currentRoundScores, currentRoundNumber]);
+    return Object.values(stats).sort((a, b) => 
+      b.points - a.points || 
+      b.exactScores - a.exactScores || 
+      b.wins - a.wins || 
+      (a.name || "").localeCompare(b.name || "")
+    );
+  }, [historyForDisplay, allUsers]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
