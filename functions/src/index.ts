@@ -1,5 +1,5 @@
 
-import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onDocumentUpdated, onDocumentCreated, onDocumentDeleted } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 
@@ -21,6 +21,9 @@ function isQuietHours(): boolean {
   return hour >= 22 || hour < 8;
 }
 
+/**
+ * Sincroniza dados oficiais da API e gerencia a revelação automática de palpites.
+ */
 export const syncBrasileiraoData = onSchedule({
   schedule: "every 15 minutes",
   memory: "256MiB",
@@ -110,109 +113,116 @@ export const syncBrasileiraoData = onSchedule({
       dateCreated: existingData ? existingData.dateCreated : admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    console.log(`syncBrasileiraoData: Rodada ${currentMatchday} sincronizada.`);
-
   } catch (error) {
     console.error("syncBrasileiraoData: Erro fatal:", error);
   }
 });
 
-export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", async (event) => {
-  const after = event.data?.after.data();
-  if (!after || !after.matches) return;
+/**
+ * Função interna para consolidar pontos no histórico global.
+ */
+async function consolidateRoundPoints(roundId: string) {
+  const db = admin.firestore();
+  const roundDoc = await db.collection("rounds").doc(roundId).get();
+  const roundData = roundDoc.data();
+  if (!roundData || !roundData.matches) return;
 
-  const roundId = event.params.roundId;
-  const roundNumber = parseInt(after.roundNumber);
+  const roundNumber = parseInt(roundData.roundNumber);
   if (!roundNumber || isNaN(roundNumber)) return;
 
-  const db = admin.firestore();
-  try {
-    const betsSnapshot = await db.collection(`rounds/${roundId}/bets`).get();
-    const betsByUser: Record<string, any[]> = {};
-    betsSnapshot.forEach(doc => {
-      const bet = doc.data();
-      if (!betsByUser[bet.userId]) betsByUser[bet.userId] = [];
-      betsByUser[bet.userId].push(bet);
-    });
+  const betsSnapshot = await db.collection(`rounds/${roundId}/bets`).get();
+  const betsByUser: Record<string, any[]> = {};
+  betsSnapshot.forEach(doc => {
+    const bet = doc.data();
+    if (!betsByUser[bet.userId]) betsByUser[bet.userId] = [];
+    betsByUser[bet.userId].push(bet);
+  });
 
-    const usersSnapshot = await db.collection("users").get();
-    const users: any[] = [];
-    usersSnapshot.forEach(doc => users.push(doc.data()));
-    
-    const pointsMap: Record<string, number> = {};
-    const exactScoresMap: Record<string, number> = {};
+  const usersSnapshot = await db.collection("users").get();
+  const users: any[] = [];
+  usersSnapshot.forEach(doc => users.push(doc.data()));
+  
+  const pointsMap: Record<string, number> = {};
+  const exactScoresMap: Record<string, number> = {};
 
-    // Inicializa mapas para todos os usuários
+  users.forEach(u => {
+    pointsMap[u.id] = 0;
+    exactScoresMap[u.id] = 0;
+  });
+
+  roundData.matches.forEach((match: any) => {
+    if (match.status === 'cancelled') return;
+    const rh = match.homeScore, ra = match.awayScore;
+    if (rh === null || ra === null || rh === undefined || ra === undefined) return;
+
     users.forEach(u => {
-      pointsMap[u.id] = 0;
-      exactScoresMap[u.id] = 0;
-    });
-
-    after.matches.forEach((match: any) => {
-      if (match.status === 'cancelled') return;
-
-      const rh = match.homeScore, ra = match.awayScore;
-      if (rh === null || ra === null || rh === undefined || ra === undefined) return;
-
-      users.forEach(u => {
-        const userBets = betsByUser[u.id] || [];
-        const bet = userBets.find(b => b.matchId === match.id);
-        if (!bet) return;
-
-        const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
-        if (ph !== null && pa !== null && ph !== undefined && pa !== undefined) {
-          if (ph === rh && pa === ra) {
-            pointsMap[u.id] += 3;
-            exactScoresMap[u.id] += 1;
-          }
-          else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) {
-            pointsMap[u.id] += 1;
-          }
+      const userBets = betsByUser[u.id] || [];
+      const bet = userBets.find(b => b.matchId === match.id);
+      if (!bet) return;
+      const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
+      if (ph !== null && pa !== null && ph !== undefined && pa !== undefined) {
+        if (ph === rh && pa === ra) {
+          pointsMap[u.id] += 3;
+          exactScoresMap[u.id] += 1;
+        } else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) {
+          pointsMap[u.id] += 1;
         }
-      });
-    });
-
-    // Verificação de rodada completa
-    const validMatches = after.matches.slice(0, 10).filter((m: any) => m.status !== 'cancelled');
-    const allFinished = validMatches.length > 0 && validMatches.every((m: any) => m.status === 'finished');
-
-    let winnerNames = "";
-    if (allFinished) {
-      const maxPts = Math.max(...Object.values(pointsMap), 0);
-      if (maxPts > 0) {
-        const playersWithMaxPts = users.filter(u => pointsMap[u.id] === maxPts);
-        const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0), 0);
-        const finalWinners = playersWithMaxPts.filter(u => (exactScoresMap[u.id] || 0) === maxExs);
-        winnerNames = finalWinners.map(u => u.username || u.id).join(", ");
       }
+    });
+  });
+
+  const validMatches = roundData.matches.slice(0, 10).filter((m: any) => m.status !== 'cancelled');
+  const allFinished = validMatches.length > 0 && validMatches.every((m: any) => m.status === 'finished');
+
+  let winnerNames = "";
+  if (allFinished) {
+    const maxPts = Math.max(...Object.values(pointsMap), 0);
+    if (maxPts > 0) {
+      const playersWithMaxPts = users.filter(u => pointsMap[u.id] === maxPts);
+      const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0), 0);
+      const finalWinners = playersWithMaxPts.filter(u => (exactScoresMap[u.id] || 0) === maxExs);
+      winnerNames = finalWinners.map(u => u.username || u.id).join(", ");
     }
-
-    const settingsRef = db.collection("app_settings").doc("championship");
-    const settingsDoc = await settingsRef.get();
-    let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
-
-    if (!history || !Array.isArray(history)) {
-      history = Array.from({ length: 38 }, (_, i) => ({ 
-        round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} 
-      }));
-    }
-
-    const roundIndex = roundNumber - 1;
-    if (roundIndex >= 0 && roundIndex < 38) {
-      history[roundIndex] = { 
-        ...history[roundIndex], 
-        round: roundNumber, 
-        winners: winnerNames || history[roundIndex].winners || "", 
-        pointsMap: pointsMap,
-        exactScoresMap: exactScoresMap
-      };
-
-      await settingsRef.set({ 
-        history, 
-        dateUpdated: admin.firestore.FieldValue.serverTimestamp() 
-      }, { merge: true });
-    }
-  } catch (error) {
-    console.error(`onRoundUpdateConsolidate: Erro na Rodada ${roundNumber}:`, error);
   }
+
+  const settingsRef = db.collection("app_settings").doc("championship");
+  const settingsDoc = await settingsRef.get();
+  let history = settingsDoc.exists ? settingsDoc.data()?.history : null;
+
+  if (!history || !Array.isArray(history)) {
+    history = Array.from({ length: 38 }, (_, i) => ({ 
+      round: i + 1, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} 
+    }));
+  }
+
+  const roundIndex = roundNumber - 1;
+  if (roundIndex >= 0 && roundIndex < 38) {
+    history[roundIndex] = { 
+      ...history[roundIndex], 
+      round: roundNumber, 
+      winners: winnerNames || history[roundIndex].winners || "", 
+      pointsMap: pointsMap,
+      exactScoresMap: exactScoresMap
+    };
+    await settingsRef.set({ history, dateUpdated: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  }
+}
+
+/**
+ * Gatilho para atualizações na Rodada (jogos, placares, status).
+ */
+export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", async (event) => {
+  await consolidateRoundPoints(event.params.roundId);
+});
+
+/**
+ * Gatilho para novos palpites ou edições de palpites.
+ * Isso garante que o Ranking Geral seja atualizado mesmo que o usuário navegue entre rodadas.
+ */
+export const onBetWritten = onDocumentUpdated("rounds/{roundId}/bets/{betId}", async (event) => {
+  await consolidateRoundPoints(event.params.roundId);
+});
+
+export const onBetCreated = onDocumentCreated("rounds/{roundId}/bets/{betId}", async (event) => {
+  await consolidateRoundPoints(event.params.roundId);
 });

@@ -5,7 +5,7 @@ import React, { useMemo } from "react";
 import { ChampionshipWinner, PlayerOverallStats, PlayerScore } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { Trophy, TrendingUp, History, Crown, Zap } from "lucide-react";
+import { Trophy, TrendingUp, History, Crown } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { cn } from "@/lib/utils";
@@ -23,8 +23,10 @@ interface ChampionshipRankingProps {
 }
 
 export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores, currentRoundNumber, isRoundFinished }: ChampionshipRankingProps) {
+  // Constrói o histórico completo de 38 rodadas
   const historyForDisplay = useMemo(() => {
     const history = [...roundWinners];
+    // Adiciona lógica virtual para a rodada atual se estiver finalizada mas não salva no banco
     if (currentRoundScores && currentRoundNumber && isRoundFinished) {
       const idx = history.findIndex(h => h.round === currentRoundNumber);
       const existing = idx !== -1 ? history[idx] : null;
@@ -63,6 +65,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
 
     const processedRounds = new Set<number>();
     
+    // Soma pontos de todas as rodadas que têm mapas de pontos no banco
     historyForDisplay.forEach((rw) => {
       const pMap = rw.pointsMap || {};
       const eMap = rw.exactScoresMap || {};
@@ -78,9 +81,12 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
         });
       }
 
+      // Lógica financeira e de vitórias (apenas se tiver ganhadores definidos)
       if (rw.winners) {
-        const winnerIds = rw.winners.split(", ").map(n => uniqueUsers.find(u => u.username === n.trim())?.id).filter(id => !!id) as string[];
+        const winnerNames = rw.winners.split(", ").map(n => n.trim());
+        const winnerIds = winnerNames.map(name => uniqueUsers.find(u => u.username === name)?.id).filter(id => !!id) as string[];
         const val = rw.value || 6;
+
         if (winnerIds.length === 1) {
           const wid = winnerIds[0];
           if (stats[wid]) { stats[wid].wins += 1; stats[wid].balance += val * (uniqueUsers.length - 1); }
@@ -95,6 +101,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       }
     });
 
+    // Se a rodada selecionada na tela não estiver no histórico do banco, soma ela "ao vivo"
     if (currentRoundScores && currentRoundNumber && !processedRounds.has(currentRoundNumber)) {
       currentRoundScores.forEach(s => {
         if (stats[s.id]) {
