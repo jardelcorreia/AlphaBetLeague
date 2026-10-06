@@ -1,3 +1,4 @@
+
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
@@ -18,41 +19,6 @@ function isQuietHours(): boolean {
   });
   const hour = parseInt(formatter.format(now));
   return hour >= 22 || hour < 8;
-}
-
-function getValidMatchesCount(matches: any[]): number {
-  if (!matches || matches.length === 0) return 0;
-  const matchesToProcess = matches.slice(0, 10);
-  const dateCounts: Record<string, number> = {};
-  
-  matchesToProcess.forEach(m => {
-    if (m.utcDate) {
-      const date = m.utcDate.split('T')[0];
-      dateCounts[date] = (dateCounts[date] || 0) + 1;
-    }
-  });
-
-  let mainDateStr = "";
-  let maxCount = -1;
-  for (const date in dateCounts) {
-    if (dateCounts[date] > maxCount) {
-      maxCount = dateCounts[date];
-      mainDateStr = date;
-    }
-  }
-
-  if (!mainDateStr) return matchesToProcess.filter(m => m.status !== 'cancelled').length;
-
-  const mainDate = new Date(`${mainDateStr}T12:00:00Z`).getTime();
-  const threeDaysInMs = 3 * 24 * 60 * 60 * 1000;
-
-  return matchesToProcess.filter(m => {
-    if (m.status === 'cancelled') return false;
-    if (!m.utcDate) return true;
-    const matchTime = new Date(m.utcDate).getTime();
-    const diff = Math.abs(matchTime - mainDate);
-    return diff <= (threeDaysInMs + 12 * 60 * 60 * 1000);
-  }).length;
 }
 
 export const syncBrasileiraoData = onSchedule({
@@ -202,6 +168,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       });
     });
 
+    // Verificação de rodada completa (10 jogos válidos finalizados)
     const validMatches = after.matches.slice(0, 10).filter((m: any) => m.status !== 'cancelled');
     const allFinished = validMatches.length > 0 && validMatches.every((m: any) => m.status === 'finished');
 
@@ -210,7 +177,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
       const maxPts = Math.max(...Object.values(pointsMap), 0);
       if (maxPts > 0) {
         const playersWithMaxPts = users.filter(u => pointsMap[u.id] === maxPts);
-        const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0));
+        const maxExs = Math.max(...playersWithMaxPts.map(u => exactScoresMap[u.id] || 0), 0);
         const finalWinners = playersWithMaxPts.filter(u => (exactScoresMap[u.id] || 0) === maxExs);
         winnerNames = finalWinners.map(u => u.username || u.id).join(", ");
       }
@@ -228,6 +195,7 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
 
     const roundIndex = roundNumber - 1;
     if (roundIndex >= 0 && roundIndex < 38) {
+      // Atualiza o histórico com os pontos atuais, e o vencedor apenas se a rodada acabou
       history[roundIndex] = { 
         ...history[roundIndex], 
         round: roundNumber, 
@@ -243,40 +211,5 @@ export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", as
     }
   } catch (error) {
     console.error(`onRoundUpdateConsolidate: Erro na Rodada ${roundNumber}:`, error);
-  }
-});
-
-export const onRevealScores = onDocumentUpdated("rounds/{roundId}", async (event) => {
-  const before = event.data?.before.data();
-  const after = event.data?.after.data();
-  if (!before || !after) return;
-
-  if (before.isScoresHidden === true && after.isScoresHidden === false) {
-    if (isQuietHours()) return;
-    
-    const usersSnapshot = await admin.firestore().collection("users").get();
-    const tokens: string[] = [];
-    usersSnapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.fcmTokens && Array.isArray(data.fcmTokens)) tokens.push(...data.fcmTokens);
-    });
-
-    if (tokens.length === 0) return;
-
-    const message = {
-      notification: {
-        title: "👀 Palpites Revelados!",
-        body: `A rodada começou! Veja agora o que seus amigos jogaram na ${after.name}.`,
-      },
-      tokens: tokens,
-      webpush: { fcmOptions: { link: `${APP_URL}/?tab=palpites` } },
-      data: { link: `${APP_URL}/?tab=palpites` }
-    };
-
-    try {
-      await admin.messaging().sendEachForMulticast(message);
-    } catch (error) {
-      console.error("onRevealScores: Erro no envio push:", error);
-    }
   }
 });
