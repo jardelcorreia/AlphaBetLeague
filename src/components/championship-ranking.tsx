@@ -5,7 +5,7 @@ import React, { useMemo } from "react";
 import { ChampionshipWinner, PlayerOverallStats, PlayerScore } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { Trophy, TrendingUp, History, Crown } from "lucide-react";
+import { Trophy, TrendingUp, History, Crown, Zap } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { cn } from "@/lib/utils";
@@ -23,16 +23,11 @@ interface ChampionshipRankingProps {
 }
 
 export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores, currentRoundNumber, isRoundFinished }: ChampionshipRankingProps) {
-  // Mapeia os vencedores oficiais + vencedor da rodada atual se finalizada para exibição no histórico
   const historyForDisplay = useMemo(() => {
     const history = [...roundWinners];
-    
-    // Se a rodada atual está finalizada e não tem vencedor no histórico, calculamos virtualmente para o UI
     if (currentRoundScores && currentRoundNumber && isRoundFinished) {
       const idx = history.findIndex(h => h.round === currentRoundNumber);
       const existing = idx !== -1 ? history[idx] : null;
-      
-      // Só adiciona vencedor virtual se o campo winners no banco de dados estiver vazio
       if (!existing || !existing.winners) {
         const maxPts = Math.max(...currentRoundScores.map(s => s.points), 0);
         if (maxPts > 0) {
@@ -40,7 +35,6 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
           const maxExs = Math.max(...topPlayers.map(s => s.exactScores), 0);
           const winners = topPlayers.filter(s => s.exactScores === maxExs);
           const winnerNames = winners.map(w => w.name).join(", ");
-          
           const virtualEntry: ChampionshipWinner = {
             round: currentRoundNumber,
             winners: winnerNames,
@@ -48,15 +42,10 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
             pointsMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.points])),
             exactScoresMap: Object.fromEntries(currentRoundScores.map(s => [s.id, s.exactScores]))
           };
-
-          if (idx !== -1) {
-            history[idx] = virtualEntry;
-          }
+          if (idx !== -1) history[idx] = virtualEntry;
         }
       }
     }
-    
-    // Garante que o histórico sempre tenha 38 posições para o map
     return Array.from({ length: 38 }, (_, i) => {
       const r = i + 1;
       const found = history.find(h => h.round === r);
@@ -68,58 +57,45 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
     if (!allUsers || allUsers.length === 0) return [];
     const uniqueUsers = Array.from(new Map(allUsers.map(u => [u.id, u])).values());
     
-    // Inicializa estatísticas
     const stats: Record<string, PlayerOverallStats & { id: string; photoUrl?: string }> = Object.fromEntries(
       uniqueUsers.map((u) => [u.id, { id: u.id, name: u.username, wins: 0, draws: 0, points: 0, exactScores: 0, balance: 0, photoUrl: u.photoUrl }])
     );
 
-    const processedRoundsInHistory = new Set<number>();
+    const processedRounds = new Set<number>();
     
-    // 1. Processa TODAS as rodadas do histórico que já possuem mapas de pontos salvos no banco
     historyForDisplay.forEach((rw) => {
       const pMap = rw.pointsMap || {};
       const eMap = rw.exactScoresMap || {};
-      const ptsEntries = Object.entries(pMap);
+      const entries = Object.entries(pMap);
       
-      if (ptsEntries.length > 0) {
-        processedRoundsInHistory.add(rw.round);
-        ptsEntries.forEach(([userId, pts]) => {
-          if (stats[userId]) {
-            stats[userId].points += (Number(pts) || 0);
-            stats[userId].exactScores += (Number(eMap[userId]) || 0);
+      if (entries.length > 0) {
+        processedRounds.add(rw.round);
+        entries.forEach(([uid, pts]) => {
+          if (stats[uid]) {
+            stats[uid].points += (Number(pts) || 0);
+            stats[uid].exactScores += (Number(eMap[uid]) || 0);
           }
         });
       }
 
-      // 2. Cálculo financeiro e de vitórias: Apenas se houver vencedor definido no banco
-      if (!rw.winners) return;
-
-      const winnersNames = rw.winners.split(", ").map(n => n.trim());
-      const winnerIds = winnersNames.map(name => {
-        const u = uniqueUsers.find(user => user.username === name);
-        return u ? u.id : null;
-      }).filter(id => id !== null) as string[];
-
-      const roundValue = rw.value || 6;
-      if (winnerIds.length === 1) {
-        const wId = winnerIds[0];
-        if (stats[wId]) {
-          stats[wId].wins += 1;
-          stats[wId].balance += roundValue * (uniqueUsers.length - 1);
+      if (rw.winners) {
+        const winnerIds = rw.winners.split(", ").map(n => uniqueUsers.find(u => u.username === n.trim())?.id).filter(id => !!id) as string[];
+        const val = rw.value || 6;
+        if (winnerIds.length === 1) {
+          const wid = winnerIds[0];
+          if (stats[wid]) { stats[wid].wins += 1; stats[wid].balance += val * (uniqueUsers.length - 1); }
+          uniqueUsers.forEach(u => { if (u.id !== wid && stats[u.id]) stats[u.id].balance -= val; });
+        } else if (winnerIds.length > 1) {
+          winnerIds.forEach(wid => { if (stats[wid]) stats[wid].draws += 1; });
+          const losers = uniqueUsers.filter(u => !winnerIds.includes(u.id));
+          const prize = (losers.length * val) / winnerIds.length;
+          winnerIds.forEach(wid => { if (stats[wid]) stats[wid].balance += prize; });
+          losers.forEach(l => { if (stats[l.id]) stats[l.id].balance -= val; });
         }
-        uniqueUsers.forEach(u => { if (u.id !== wId && stats[u.id]) stats[u.id].balance -= roundValue; });
-      } else if (winnerIds.length > 1) {
-        winnerIds.forEach(wId => { if (stats[wId]) stats[wId].draws += 1; });
-        const losers = uniqueUsers.filter(u => !winnerIds.includes(u.id));
-        const prizePerWinner = (losers.length * roundValue) / winnerIds.length;
-        winnerIds.forEach(wId => { if (stats[wId]) stats[wId].balance += prizePerWinner; });
-        losers.forEach(l => { if (stats[l.id]) stats[l.id].balance -= roundValue; });
       }
     });
 
-    // 3. Adiciona pontos "vivos" da rodada exibida na tela APENAS se ela não estiver no histórico do banco
-    // Isso garante que enquanto o banco não atualiza, a visão local soma o que está na tela.
-    if (currentRoundScores && currentRoundNumber && !processedRoundsInHistory.has(currentRoundNumber)) {
+    if (currentRoundScores && currentRoundNumber && !processedRounds.has(currentRoundNumber)) {
       currentRoundScores.forEach(s => {
         if (stats[s.id]) {
           stats[s.id].points += (s.points || 0);
@@ -128,50 +104,72 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       });
     }
 
-    return Object.values(stats).sort((a, b) => 
-      b.wins - a.wins || 
-      b.draws - a.draws || 
-      b.points - a.points || 
-      b.exactScores - a.exactScores || 
-      b.balance - a.balance || 
-      (a.name || "").localeCompare(b.name || "")
-    );
+    return Object.values(stats).sort((a, b) => b.points - a.points || b.exactScores - a.exactScores || b.wins - a.wins || (a.name || "").localeCompare(b.name || ""));
   }, [historyForDisplay, allUsers, currentRoundScores, currentRoundNumber]);
 
   return (
-    <div className="space-y-4 max-w-6xl mx-auto">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-        <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-4">
            {overallStats.map((player, index) => {
-              const isFirst = index === 0 && (player.wins > 0 || player.points > 0);
+              const isFirst = index === 0 && (player.points > 0);
               return (
-                <Card key={player.id} className={cn("glass-card border-none rounded-xl overflow-hidden transition-all duration-300", isFirst && "ring-1 ring-accent ring-offset-2 ring-offset-background shadow-lg shadow-accent/10")}>
+                <Card key={player.id} className={cn(
+                  "glass-card border-none rounded-[2rem] overflow-hidden transition-all duration-300 shadow-xl", 
+                  isFirst && "ring-2 ring-primary/40 shadow-primary/10"
+                )}>
                   <CardContent className="p-0">
-                     <div className={cn("p-3 flex items-center gap-3 relative", isFirst ? "bg-accent/5" : "bg-primary/[0.02]")}>
-                        <div className="relative shrink-0">
-                          <div className={cn("h-10 w-10 flex items-center justify-center rounded-xl", isFirst ? "sports-gradient" : "bg-primary/5")}>
-                            <Avatar className="h-8 w-8 border border-background">
-                              <AvatarImage src={player.photoUrl || undefined} />
-                              <AvatarFallback className="text-[10px] font-black italic">{player.name?.substring(0, 2).toUpperCase()}</AvatarFallback>
+                     <div className="p-6 flex items-center justify-between bg-primary/[0.03]">
+                        <div className="flex items-center gap-4">
+                          <div className="relative">
+                            <Avatar className="h-16 w-16 border-2 border-background rounded-2xl shadow-xl">
+                              <AvatarImage src={player.photoUrl || undefined} className="object-cover" />
+                              <AvatarFallback className="text-xl font-black italic bg-primary/10 text-primary">
+                                {player.name?.substring(0, 2).toUpperCase()}
+                              </AvatarFallback>
                             </Avatar>
+                            {isFirst && <div className="absolute -top-2 -right-2 h-6 w-6 bg-accent rounded-full flex items-center justify-center shadow-lg"><Crown className="h-3 w-3 text-accent-foreground" /></div>}
                           </div>
-                          {isFirst && <div className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-accent rounded-full flex items-center justify-center shadow-md"><Crown className="h-2 w-2 text-accent-foreground" /></div>}
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="text-xs font-black italic uppercase text-primary truncate leading-tight">{player.name}</h3>
-                          <Badge variant="outline" className="rounded-full text-[8px] font-black uppercase h-4 px-1.5 border-primary/10">{isFirst ? "Alpha Líder" : `Rank #${index + 1}`}</Badge>
+                          <div>
+                            <h3 className="text-lg font-black italic uppercase text-primary tracking-tight leading-tight">{player.name}</h3>
+                            <Badge variant="outline" className="rounded-lg text-[9px] font-black uppercase h-5 px-2 mt-1 border-primary/20 bg-primary/5 text-primary/80">Rank #{index + 1}</Badge>
+                          </div>
                         </div>
                      </div>
-                     <div className="p-3 space-y-2">
-                        <div className="grid grid-cols-4 gap-1 text-center">
-                          <div><span className="text-sm font-black italic text-primary block">{player.wins}</span><span className="text-[8px] font-bold text-muted-foreground uppercase">Vit</span></div>
-                          <div><span className="text-sm font-black italic text-foreground block">{player.draws}</span><span className="text-[8px] font-bold text-muted-foreground uppercase">Emp</span></div>
-                          <div><span className="text-sm font-black italic text-foreground block">{player.points}</span><span className="text-[8px] font-bold text-muted-foreground uppercase">Pts</span></div>
-                          <div><span className="text-sm font-black italic text-secondary block">{player.exactScores}</span><span className="text-[8px] font-bold text-muted-foreground uppercase">Exa</span></div>
+                     
+                     <div className="p-8 space-y-8">
+                        <div className="grid grid-cols-4 gap-4 text-center">
+                          <div className="space-y-1">
+                            <span className="text-2xl font-black italic text-primary block tracking-tighter">{player.wins}</span>
+                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Vit</span>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-2xl font-black italic text-foreground block tracking-tighter">{player.draws}</span>
+                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Emp</span>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-2xl font-black italic text-foreground block tracking-tighter">{player.points}</span>
+                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Pts</span>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-2xl font-black italic text-secondary block tracking-tighter">{player.exactScores}</span>
+                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Exa</span>
+                          </div>
                         </div>
-                        <div className={cn("px-2 py-1 rounded-lg border border-dashed flex items-center justify-between", player.balance >= 0 ? "bg-secondary/5 border-secondary/20" : "bg-red-500/5 border-red-500/20")}>
-                          <div className="flex items-center gap-1.5"><TrendingUp className="h-3 w-3 text-muted-foreground" /><span className="text-[8px] font-black uppercase text-muted-foreground">Saldo</span></div>
-                          <span className={cn("text-sm font-black italic", player.balance >= 0 ? "text-secondary" : "text-red-500")}>R$ {player.balance.toFixed(2)}</span>
+
+                        <div className={cn(
+                          "px-6 py-4 rounded-[1.5rem] border-2 border-dashed flex items-center justify-between transition-colors",
+                          player.balance >= 0 ? "bg-secondary/5 border-secondary/30" : "bg-red-500/5 border-red-500/30"
+                        )}>
+                          <div className="flex items-center gap-3">
+                            <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center", player.balance >= 0 ? "bg-secondary/20" : "bg-red-500/20")}>
+                              <TrendingUp className={cn("h-4 w-4", player.balance >= 0 ? "text-secondary" : "text-red-500")} />
+                            </div>
+                            <span className="text-[11px] font-black uppercase text-muted-foreground tracking-widest">Saldo Liga</span>
+                          </div>
+                          <span className={cn("text-xl font-black italic tracking-tight", player.balance >= 0 ? "text-secondary" : "text-red-500")}>
+                            R$ {player.balance.toFixed(2)}
+                          </span>
                         </div>
                      </div>
                   </CardContent>
@@ -179,13 +177,44 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
               );
            })}
         </div>
-        <div className="lg:col-span-4">
-          <Card className="glass-card border-none rounded-xl overflow-hidden sticky top-20 shadow-md">
-             <CardHeader className="p-3 border-b border-primary/5"><div className="flex items-center gap-2"><History className="h-4 w-4 text-primary" /><CardTitle className="text-[11px] font-black italic uppercase text-primary">Histórico de Vencedores</CardTitle></div></CardHeader>
+        <div className="lg:col-span-3">
+          <Card className="glass-card border-none rounded-3xl overflow-hidden sticky top-24 shadow-2xl">
+             <CardHeader className="p-5 border-b border-primary/5 bg-primary/[0.02]">
+               <div className="flex items-center gap-3">
+                 <History className="h-5 w-5 text-primary" />
+                 <CardTitle className="text-sm font-black italic uppercase text-primary tracking-widest">Histórico Alpha</CardTitle>
+               </div>
+             </CardHeader>
              <CardContent className="p-0">
-                <Accordion type="single" collapsible defaultValue={currentRoundNumber && currentRoundNumber > 19 ? "turno2" : "turno1"} className="w-full">
-                   <AccordionItem value="turno1" className="border-none"><AccordionTrigger className="px-4 py-2 text-[10px] font-black uppercase text-primary/60 hover:no-underline">1º Turno (R1-R19)</AccordionTrigger><AccordionContent className="px-3 pb-3 space-y-1">{historyForDisplay.slice(0, 19).map((rw, i) => <div key={i} className="flex items-center justify-between p-1.5 rounded-lg bg-muted/10 text-[9px] font-bold"><span className="text-primary w-5">#{rw.round}</span><span className="flex-1 truncate mx-2 uppercase italic text-muted-foreground">{rw.winners || "Pendente"}</span><span className="text-primary/40 italic">R${rw.value}</span></div>)}</AccordionContent></AccordionItem>
-                   <AccordionItem value="turno2" className="border-none"><AccordionTrigger className="px-4 py-2 text-[10px] font-black uppercase text-primary/60 hover:no-underline">2º Turno (R20-R38)</AccordionTrigger><AccordionContent className="px-3 pb-3 space-y-1">{historyForDisplay.slice(19, 38).map((rw, i) => <div key={i} className="flex items-center justify-between p-1.5 rounded-lg bg-muted/10 text-[9px] font-bold"><span className="text-primary w-5">#{rw.round}</span><span className="flex-1 truncate mx-2 uppercase italic text-muted-foreground">{rw.winners || "Pendente"}</span><span className="text-primary/40 italic">R${rw.value}</span></div>)}</AccordionContent></AccordionItem>
+                <Accordion type="single" collapsible defaultValue="turno2" className="w-full">
+                   <AccordionItem value="turno1" className="border-none">
+                     <AccordionTrigger className="px-5 py-4 text-[11px] font-black uppercase text-primary/60 hover:no-underline hover:bg-primary/5">
+                       Turno 01 (R01-R19)
+                     </AccordionTrigger>
+                     <AccordionContent className="px-4 pb-4 space-y-1">
+                       {historyForDisplay.slice(0, 19).map((rw, i) => (
+                         <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-muted/20 text-[10px] font-bold border border-white/5">
+                           <span className="text-primary w-6 italic">#{rw.round}</span>
+                           <span className="flex-1 truncate mx-3 uppercase italic text-muted-foreground/80">{rw.winners || "Em disputa..."}</span>
+                           <span className="text-primary/40 italic font-black">R${rw.value}</span>
+                         </div>
+                       ))}
+                     </AccordionContent>
+                   </AccordionItem>
+                   <AccordionItem value="turno2" className="border-none">
+                     <AccordionTrigger className="px-5 py-4 text-[11px] font-black uppercase text-primary/60 hover:no-underline hover:bg-primary/5">
+                       Turno 02 (R20-R38)
+                     </AccordionTrigger>
+                     <AccordionContent className="px-4 pb-4 space-y-1">
+                       {historyForDisplay.slice(19, 38).map((rw, i) => (
+                         <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-muted/20 text-[10px] font-bold border border-white/5">
+                           <span className="text-primary w-6 italic">#{rw.round}</span>
+                           <span className="flex-1 truncate mx-3 uppercase italic text-muted-foreground/80">{rw.winners || "Em disputa..."}</span>
+                           <span className="text-primary/40 italic font-black">R${rw.value}</span>
+                         </div>
+                       ))}
+                     </AccordionContent>
+                   </AccordionItem>
                 </Accordion>
              </CardContent>
           </Card>
