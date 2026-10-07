@@ -1,3 +1,4 @@
+
 import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
@@ -9,6 +10,7 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#050810',
     theme_color: '#050810',
+    gcm_sender_id: '103953800507', // ID padrão fixo do Firebase para GCM
     icons: [
       { src: '/icons/icon-72x72.png', sizes: '72x72', type: 'image/png' },
       { src: '/icons/icon-96x96.png', sizes: '96x96', type: 'image/png' },

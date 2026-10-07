@@ -8,6 +8,7 @@ if (admin.apps.length === 0) {
 }
 
 const BASE_URL = 'https://api.football-data.org/v4';
+const APP_URL = "https://alphabetleague.netlify.app";
 
 /**
  * Sincroniza dados oficiais da API.
@@ -141,8 +142,7 @@ async function consolidateRoundPoints(roundId: string) {
     });
   });
 
-  const mainMatches = roundData.matches.slice(0, 10);
-  const allFinished = mainMatches.every((m: any) => m.status === 'finished' || m.status === 'cancelled');
+  const allFinished = roundData.matches.every((m: any) => m.status === 'finished' || m.status === 'cancelled');
 
   let winnerNames = "";
   if (allFinished) {
@@ -186,16 +186,30 @@ async function consolidateRoundPoints(roundId: string) {
     
     console.log(`consolidateRoundPoints: Rodada ${roundNumber} atualizada.`);
   }
+
+  // Notificação de Placares Revelados (exemplo de gatilho)
+  if (roundData.isScoresHidden === false && !roundData.autoRevealProcessed) {
+    const tokens: string[] = [];
+    users.forEach(u => { if (u.fcmTokens) tokens.push(...u.fcmTokens); });
+    if (tokens.length > 0) {
+      await admin.messaging().sendEachForMulticast({
+        notification: { title: "👀 Palpites Revelados!", body: `A rodada começou! Veja agora os palpites na ${roundData.name}.` },
+        tokens,
+        webpush: { fcmOptions: { link: `${APP_URL}/?tab=palpites` } }
+      });
+      await db.collection("rounds").doc(roundId).update({ autoRevealProcessed: true });
+    }
+  }
 }
 
 export const onRoundUpdateConsolidate = onDocumentUpdated("rounds/{roundId}", async (event) => {
   await consolidateRoundPoints(event.params.roundId);
 });
 
-export const onBetWritten = onDocumentUpdated("rounds/{roundId}/bets/{betId}", async (event) => {
+export const onBetCreated = onDocumentCreated("rounds/{roundId}/bets/{betId}", async (event) => {
   await consolidateRoundPoints(event.params.roundId);
 });
 
-export const onBetCreated = onDocumentCreated("rounds/{roundId}/bets/{betId}", async (event) => {
+export const onBetUpdated = onDocumentUpdated("rounds/{roundId}/bets/{betId}", async (event) => {
   await consolidateRoundPoints(event.params.roundId);
 });

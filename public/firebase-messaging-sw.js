@@ -1,8 +1,9 @@
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
-// O Firebase App Hosting injeta as configurações, mas para o SW
-// usamos a inicialização compat para interceptar mensagens em background.
+// Scripts necessários para o Firebase Messaging em segundo plano
+importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
+
+// Configuração idêntica ao src/firebase/config.ts
 firebase.initializeApp({
   apiKey: "AIzaSyA6noJTkCcRypfeqi91qa6a2hDEcQ606N0",
   authDomain: "studio-7344387368-26e1e.firebaseapp.com",
@@ -14,36 +15,17 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Listener para quando o app está fechado ou em segundo plano
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Mensagem recebida em background: ', payload);
-  
+
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
     body: payload.notification.body,
-    icon: '/icons/android-chrome-192x192.png',
-    data: {
-      url: payload.data?.link || '/'
-    }
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
+    data: payload.data
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
-});
-
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const urlToOpen = event.notification.data.url;
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (let i = 0; i < windowClients.length; i++) {
-        const client = windowClients[i];
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
-  );
 });
