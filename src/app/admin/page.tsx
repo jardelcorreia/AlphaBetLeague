@@ -31,7 +31,6 @@ import {
   DollarSign,
   Table,
   Trash2,
-  Zap,
   CheckCircle2,
   Save,
   CloudDownload,
@@ -40,8 +39,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getTeamAbrev, cn, determineMatchValidity } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RoundCardDialog } from "@/components/round-card-dialog";
+import { runConsolidation } from "@/lib/consolidation";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -95,30 +93,6 @@ export default function AdminPage() {
   }, [db, roundId, user]);
   const { data: allBets } = useCollection(betsCollectionRef);
 
-  const predictions = useMemo((): PlayerPredictions => {
-    if (!allBets || !allUsers) return {};
-    const next: PlayerPredictions = {};
-    const uniqueUsersMap = new Map();
-    allUsers.forEach(u => uniqueUsersMap.set(u.id, u));
-    
-    Array.from(uniqueUsersMap.values()).forEach(u => { 
-      next[u.id] = Array(10).fill({ homeScore: "", awayScore: "" }); 
-    });
-
-    allBets.forEach(bet => {
-      const parts = bet.id.split('_');
-      const matchIdx = parseInt(parts[parts.length - 1]);
-      const bUserId = bet.userId;
-      if (bUserId && next[bUserId] && !isNaN(matchIdx) && matchIdx >= 0 && matchIdx < 10) {
-        next[bUserId][matchIdx] = { 
-          homeScore: bet.homeScorePrediction?.toString() || "", 
-          awayScore: bet.awayScorePrediction?.toString() || "" 
-        };
-      }
-    });
-    return next;
-  }, [allBets, allUsers]);
-
   useEffect(() => {
     if (isUserLoading || isLoadingUser) return;
     if (!user) {
@@ -144,25 +118,14 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (!isLoadingSettings) {
-      if (settingsData?.history) {
-        let historyArray: ChampionshipWinner[] = [];
-        if (Array.isArray(settingsData.history)) {
-          historyArray = settingsData.history;
-        } else {
-          historyArray = Array.from({ length: 38 }, (_, i) => {
-            const key = (i + 1).toString();
-            return (settingsData.history as any)[key] || { round: i + 1, winners: "", value: 6 };
-          });
-        }
-
-        const fullHistory = Array.from({ length: 38 }, (_, i) => {
-          const r = i + 1;
-          const existing = historyArray.find(h => h.round === r);
-          return existing || { round: r, winners: "", value: 6 };
-        });
-        setRoundWinners(fullHistory);
-      }
+    if (!isLoadingSettings && settingsData?.history) {
+      const historyArray = Array.isArray(settingsData.history) ? settingsData.history : [];
+      const fullHistory = Array.from({ length: 38 }, (_, i) => {
+        const r = i + 1;
+        const existing = historyArray.find((h: any) => h.round === r);
+        return existing || { round: r, winners: "", value: 6, pointsMap: {}, exactScoresMap: {} };
+      });
+      setRoundWinners(fullHistory);
       setHasLoadedHistory(true);
     }
   }, [settingsData, isLoadingSettings]);
@@ -178,7 +141,6 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (currentRound === null) return;
-    
     async function loadApiMatches() {
       setLoading(true);
       try {
@@ -190,7 +152,6 @@ export default function AdminPage() {
         setLoading(false);
       }
     }
-
     loadApiMatches();
   }, [currentRound]);
 
@@ -239,57 +200,24 @@ export default function AdminPage() {
         dateUpdated: serverTimestamp(),
         dateCreated: roundData?.dateCreated || serverTimestamp(),
       }, { merge: true });
+      
+      // Consolidação Automática ao salvar
+      if (allUsers && allBets) {
+        await runConsolidation(db, roundId, updatedMatches, allUsers, allBets);
+      }
     } catch (err: any) {
       toast({ variant: "destructive", title: "Erro", description: err.message });
     }
   };
 
   const handleManualConsolidate = async () => {
-    if (!currentRound || !allUsers || !allBets || matches.length === 0) return;
+    if (!currentRound || !allUsers || !allBets || matches.length === 0 || !roundId) return;
     setIsConsolidating(true);
     try {
-      const pointsMap: Record<string, number> = {};
-      const exactScoresMap: Record<string, number> = {};
-      
-      allUsers.forEach(u => { pointsMap[u.id] = 0; exactScoresMap[u.id] = 0; });
-
-      matches.forEach(m => {
-        if (m.status === 'cancelled') return;
-        const rh = m.homeScore, ra = m.awayScore;
-        if (rh === null || ra === null || rh === undefined || ra === undefined) return;
-
-        allUsers.forEach(u => {
-          const bet = allBets.find(b => b.userId === u.id && b.matchId === m.id);
-          if (!bet) return;
-          const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
-          if (ph !== null && pa !== null) {
-            if (ph === rh && pa === ra) { pointsMap[u.id] += 3; exactScoresMap[u.id] += 1; }
-            else if ((ph > pa && rh > ra) || (ph < pa && rh < ra) || (ph === pa && rh === ra)) { pointsMap[u.id] += 1; }
-          }
-        });
-      });
-
-      const maxPts = Math.max(...Object.values(pointsMap), 0);
-      let winnerNames = "";
-      if (maxPts > 0) {
-        const playersWithMax = allUsers.filter(u => pointsMap[u.id] === maxPts);
-        const maxExs = Math.max(...playersWithMax.map(u => exactScoresMap[u.id]), 0);
-        winnerNames = playersWithMax.filter(u => exactScoresMap[u.id] === maxExs).map(u => u.username || u.id).join(", ");
+      const result = await runConsolidation(db, roundId, matches, allUsers, allBets);
+      if (result) {
+        toast({ title: "Rodada Consolidada!", description: `Vencedores: ${result.winners || "Nenhum"}` });
       }
-
-      const historyIdx = currentRound - 1;
-      const nextWinners = [...roundWinners];
-      nextWinners[historyIdx] = {
-        ...nextWinners[historyIdx],
-        winners: winnerNames,
-        pointsMap,
-        exactScoresMap
-      };
-
-      const settingsRef = doc(db, "app_settings", "championship");
-      await setDoc(settingsRef, { history: nextWinners, dateUpdated: serverTimestamp() }, { merge: true });
-      setRoundWinners(nextWinners);
-      toast({ title: "Rodada Consolidada!", description: `Vencedores: ${winnerNames || "Nenhum"}` });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Erro", description: error.message });
     } finally {
@@ -417,7 +345,7 @@ export default function AdminPage() {
                   className="rounded-lg h-7 px-3 gap-2 font-black italic uppercase text-[8px] border-secondary/20 text-secondary hover:bg-secondary/5"
                 >
                   {isConsolidating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Gavel className="h-3 w-3" />}
-                  Consolidar Rodada
+                  Consolidar Agora
                 </Button>
                 <Button 
                   variant="outline" 
@@ -501,8 +429,8 @@ export default function AdminPage() {
               </CardHeader>
               <CardContent className="p-4 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1"><label className="text-[8px] font-black uppercase text-muted-foreground tracking-widest">Turno 1</label><div className="flex items-center gap-1.5 bg-muted/20 p-2 rounded-xl border border-primary/5"><span className="text-[10px] font-black text-primary/40">R$</span><input type="number" value={turn1Value} onChange={(e) => setTurn1Value(parseFloat(e.target.value) || 0)} className="border-none bg-transparent font-black text-base focus:outline-none w-full" /></div></div>
-                  <div className="space-y-1"><label className="text-[8px] font-black uppercase text-muted-foreground tracking-widest">Turno 2</label><div className="flex items-center gap-1.5 bg-muted/20 p-2 rounded-xl border border-primary/5"><span className="text-[10px] font-black text-primary/40">R$</span><input type="number" value={turn2Value} onChange={(e) => setTurn2Value(parseFloat(e.target.value) || 0)} className="border-none bg-transparent font-black text-base focus:outline-none w-full" /></div></div>
+                  <div className="space-y-1"><label className="text-[8px] font-black uppercase text-muted-foreground ml-1">Turno 1</label><div className="flex items-center gap-1.5 bg-muted/20 p-2 rounded-xl border border-primary/5"><span className="text-[10px] font-black text-primary/40">R$</span><input type="number" value={turn1Value} onChange={(e) => setTurn1Value(parseFloat(e.target.value) || 0)} className="border-none bg-transparent font-black text-base focus:outline-none w-full" /></div></div>
+                  <div className="space-y-1"><label className="text-[8px] font-black uppercase text-muted-foreground ml-1">Turno 2</label><div className="flex items-center gap-1.5 bg-muted/20 p-2 rounded-xl border border-primary/5"><span className="text-[10px] font-black text-primary/40">R$</span><input type="number" value={turn2Value} onChange={(e) => setTurn2Value(parseFloat(e.target.value) || 0)} className="border-none bg-transparent font-black text-base focus:outline-none w-full" /></div></div>
                 </div>
                 <Button onClick={applyTurnValues} variant="outline" className="w-full rounded-xl h-8 font-black italic uppercase gap-2 text-[8px] border-primary/10 text-primary hover:bg-primary/5"><RefreshCw className="h-3 w-3" />Atualizar Tudo</Button>
                 <div className="pt-3 border-t border-primary/5">

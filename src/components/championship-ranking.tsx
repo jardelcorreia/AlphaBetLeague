@@ -22,7 +22,7 @@ interface ChampionshipRankingProps {
   isRoundFinished?: boolean;
 }
 
-export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores, currentRoundNumber, isRoundFinished }: ChampionshipRankingProps) {
+export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores, currentRoundNumber }: ChampionshipRankingProps) {
   const historyForDisplay = useMemo(() => {
     let historyArray: ChampionshipWinner[] = [];
     
@@ -35,6 +35,7 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
       });
     }
 
+    // Injetar dados da rodada atual na visualização se ela estiver ativa
     if (currentRoundScores && currentRoundNumber) {
       const idx = historyArray.findIndex(h => h.round === currentRoundNumber);
       const virtualEntry: ChampionshipWinner = {
@@ -58,16 +59,16 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
     if (!allUsers || allUsers.length === 0) return [];
     
     const uniqueUsers = Array.from(new Map(allUsers.map(u => [u.id, u])).values());
-    
     const stats: Record<string, PlayerOverallStats & { id: string; photoUrl?: string }> = Object.fromEntries(
       uniqueUsers.map((u) => [u.id, { id: u.id, name: u.username, wins: 0, draws: 0, points: 0, exactScores: 0, balance: 0, photoUrl: u.photoUrl }])
     );
 
-    historyForDisplay.forEach((rw, roundIdx) => {
+    historyForDisplay.forEach((rw) => {
       const pMap = rw.pointsMap || {};
       const eMap = rw.exactScoresMap || {};
       const val = rw.value || 6;
       
+      // Somar pontos e exatos de todas as rodadas com dados
       Object.entries(pMap).forEach(([uid, pts]) => {
         if (stats[uid]) {
           stats[uid].points += (Number(pts) || 0);
@@ -75,13 +76,13 @@ export function ChampionshipRanking({ roundWinners, allUsers, currentRoundScores
         }
       });
 
-      // Lógica de Vencedores Híbrida: Se não tem 'winners' salvo, mas tem pontos e a rodada é passada, calcula o vencedor
+      // Calcular Vitórias e Saldo (apenas se houver vencedor definido ou rodada passada com pontos)
       let winnerIds: string[] = [];
       if (rw.winners) {
         const winnerNames = rw.winners.split(", ").map(n => n.trim());
         winnerIds = winnerNames.map(name => uniqueUsers.find(u => u.username === name)?.id).filter(id => !!id) as string[];
-      } else if (Object.keys(pMap).length > 0 && (roundIdx + 1) < (currentRoundNumber || 0)) {
-        // Fallback: Calcula o vencedor dinamicamente para rodadas passadas sem 'winners' gravado
+      } else if (Object.keys(pMap).length > 0 && rw.round < (currentRoundNumber || 0)) {
+        // Cálculo dinâmico para rodadas passadas sem vencedor salvo
         const maxPts = Math.max(...Object.values(pMap).map(p => Number(p)), 0);
         if (maxPts > 0) {
           const playersWithMax = uniqueUsers.filter(u => Number(pMap[u.id] || 0) === maxPts);

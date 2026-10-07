@@ -11,15 +11,15 @@ const BASE_URL = 'https://api.football-data.org/v4';
 const APP_URL = "https://alphabetleague.netlify.app";
 /**
  * Sincroniza dados oficiais da API.
+ * Removido 'secrets' para permitir deploy no plano gratuito.
  */
 exports.syncBrasileiraoData = (0, scheduler_1.onSchedule)({
     schedule: "every 15 minutes",
     memory: "256MiB",
-    secrets: ["FOOTBALL_DATA_API_KEY"],
 }, async (event) => {
     const apiKey = process.env.FOOTBALL_DATA_API_KEY;
     if (!apiKey) {
-        console.error("syncBrasileiraoData: FOOTBALL_DATA_API_KEY não configurada.");
+        console.error("syncBrasileiraoData: FOOTBALL_DATA_API_KEY não configurada no ambiente.");
         return;
     }
     try {
@@ -173,9 +173,8 @@ async function consolidateRoundPoints(roundId) {
             history,
             dateUpdated: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
-        console.log(`consolidateRoundPoints: Rodada ${roundNumber} atualizada.`);
     }
-    // Notificação de Placares Revelados (exemplo de gatilho)
+    // Notificação de Placares Revelados
     if (roundData.isScoresHidden === false && !roundData.autoRevealProcessed) {
         const tokens = [];
         users.forEach(u => { if (u.fcmTokens)
