@@ -1,7 +1,6 @@
 
-import { Match, PlayerPredictions, ChampionshipWinner, PlayerScore } from "./types";
-import { doc, getDoc, setDoc, serverTimestamp, CollectionReference, QuerySnapshot, DocumentData } from "firebase/firestore";
-import { Firestore } from "firebase/firestore";
+import { Match, ChampionshipWinner } from "./types";
+import { doc, getDoc, setDoc, serverTimestamp, Firestore } from "firebase/firestore";
 
 /**
  * Calcula a pontuação de um jogador para um jogo específico.
@@ -22,8 +21,7 @@ export function calculateMatchPoints(match: Match, pred: { homeScore: string; aw
 }
 
 /**
- * Consolida os pontos da rodada e identifica os vencedores.
- * Esta função agora pode ser chamada diretamente pelo Admin no Frontend.
+ * Consolida os pontos da rodada e identifica os vencedores no Frontend (Manual/Fallback).
  */
 export async function runConsolidation(
   db: Firestore,
@@ -60,21 +58,17 @@ export async function runConsolidation(
     });
   });
 
-  // Identificar Vencedor (apenas se houver jogos finalizados/live)
-  const hasStarted = matches.some(m => m.status === 'finished' || m.status === 'live');
-  const isFinished = matches.every(m => m.status === 'finished' || m.status === 'cancelled');
-  
+  const allFinished = matches.every(m => m.status === 'finished' || m.status === 'cancelled');
   let winnerNames = "";
-  if (hasStarted) {
-    const maxPts = Math.max(...Object.values(pointsMap), 0);
-    if (maxPts > 0) {
-      const playersWithMax = allUsers.filter(u => pointsMap[u.id] === maxPts);
-      const maxExs = Math.max(...playersWithMax.map(u => exactScoresMap[u.id]), 0);
-      winnerNames = playersWithMax
-        .filter(u => exactScoresMap[u.id] === maxExs)
-        .map(u => u.username || u.id)
-        .join(", ");
-    }
+  
+  const maxPts = Math.max(...Object.values(pointsMap), 0);
+  if (maxPts > 0) {
+    const playersWithMax = allUsers.filter(u => pointsMap[u.id] === maxPts);
+    const maxExs = Math.max(...playersWithMax.map(u => exactScoresMap[u.id]), 0);
+    winnerNames = playersWithMax
+      .filter(u => exactScoresMap[u.id] === maxExs)
+      .map(u => u.username || u.id)
+      .join(", ");
   }
 
   const settingsRef = doc(db, "app_settings", "championship");
@@ -94,7 +88,7 @@ export async function runConsolidation(
 
   const newEntry: ChampionshipWinner = {
     round: roundNumber,
-    winners: winnerNames,
+    winners: allFinished ? winnerNames : "",
     value: history[roundNumber - 1]?.value || 6,
     pointsMap,
     exactScoresMap
