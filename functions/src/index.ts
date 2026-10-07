@@ -128,7 +128,7 @@ async function consolidateRoundPoints(roundId: string) {
 
     users.forEach(u => {
       const userBets = betsByUser[u.id] || [];
-      const bet = userBets.find(b => b.matchId === match.id);
+      const bet = userBets.find(b => b.matchId === match.id || b.id.endsWith(`_${match.id}`));
       if (!bet) return;
       const ph = bet.homeScorePrediction, pa = bet.awayScorePrediction;
       if (ph !== null && pa !== null && ph !== undefined && pa !== undefined) {
@@ -185,7 +185,7 @@ async function consolidateRoundPoints(roundId: string) {
     }, { merge: true });
   }
 
-  // Notificação de Placares Revelados
+  // Notificação de Placares Revelados (Auto-Reveal)
   if (roundData.isScoresHidden === false && !roundData.autoRevealProcessed) {
     const tokens: string[] = [];
     users.forEach(u => { if (u.fcmTokens) tokens.push(...u.fcmTokens); });
